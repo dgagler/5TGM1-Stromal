@@ -3,17 +3,24 @@ title: "5TGM1_AllCells_ManualAnnotation"
 output: html_document
 date: "2023-06-01"
 ---
+################################################################################
 
-# Created 6/1/2023 by Dylan Gagler, MSc - dylan.gagler@nyulangone.org
+Created 6/1/2023 by Dylan Gagler, MSc - dylan.gagler@nyulangone.org
 
-# Code used to manually annotate both the stromal and non-stromal compartment of the mouse BM. Requires the output of the QC/integration step.
+Code used to manually annotate both the stromal and non-stromal compartment of the mouse BM. Accepts QC filtered and integrated data. After annotation, this excludes non-stromal cells and saves out an rds object with stromals only.
 
-# Load libraries
+Stromal markers derived from Baryawno et al., 2019 - https://www.cell.com/cell/pdf/S0092-8674(19)30459-3.pdf
+
+Immune and erythroid markers derived from general apriori knowledge.
+
+################################################################################
+
+Load libraries
 ```{r}
 library(Seurat)
 library(ggplot2)
 ```
-# Read in data
+Read in data
 ```{r}
 mouseBM <- readRDS("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/objects/Mouse_5TGM1_QC_IntegratedObject_Final.rds")
 DefaultAssay(mouseBM) <- "RNA"
@@ -52,11 +59,9 @@ FeaturePlot(mouseBM, features = "S100a4")
 FeaturePlot(mouseBM, features = "Fn1")
 FeaturePlot(mouseBM, features = "Dcn")
 ```
-
 ############################################
 ### Non-Stromal Compartment Marker Genes ###
 ############################################
-
 ```{r}
 # B cells
 FeaturePlot(mouseBM, features = "Cd79a")
@@ -96,11 +101,11 @@ FeaturePlot(mouseBM, features = "Slamf7")
 FeaturePlot(mouseBM, features = "Cdh19")
 FeaturePlot(mouseBM, features = "Plp1")
 ```
-# Check out clusters on UMAP
+Check out clusters on UMAP
 ```{r}
 DimPlot(mouseBM, group.by = "seurat_clusters", label = T)
 ```
-# Changing idents
+Changing idents
 ```{r}
 Idents(mouseBM) <- mouseBM@meta.data$seurat_clusters
 
@@ -128,11 +133,12 @@ mouseBM <- RenameIdents(mouseBM, "19" = "Oligodendrocytes")
 mouseBM@meta.data$celltypes <- Idents(mouseBM)
 DimPlot(mouseBM, group.by = "celltypes", label = T)
 ```
-# Subsetting out stromals
+Subsetting out stromals
 ```{r}
 stromals <- subset(mouseBM, subset = celltypes %in% c("Chondrocytes", "OLC", "MSC", "AEC", "SEC", "Fibroblasts", "Pericytes"))
+stromals@meta.data$celltypes <- droplevels(stromals@meta.data$celltypes)
 ```
-# Reclustering stromals
+Reclustering stromals
 ```{r}
 stromals <- ScaleData(stromals)
 stromals <- FindVariableFeatures(stromals, nfeatures = 2000)
@@ -170,11 +176,11 @@ stromals <- RunUMAP(stromals, dims = 1:21)
 DimPlot(stromals, label = T)
 DimPlot(stromals, group.by = "celltypes", label = T)
 ```
-# Identifying B cell contam
+Identifying B cell contam
 ```{r}
 FeaturePlot(stromals, features = c("Cd79a"))
 ```
-# Subsetting B cell contam and running final workflow
+Subsetting B cell contam and running final workflow
 ```{r}
 stromals.subbed <- subset(stromals, subset = seurat_clusters %in% c("0", "1", "2", "3", "4", "5", "6", "9"))
 
@@ -189,8 +195,8 @@ DimPlot(stromals.subbed, label = T)
 DimPlot(stromals.subbed, group.by = "celltypes", label = T)
 table(stromals.subbed@meta.data$celltypes)
 ```
-# Save out
+Save out
 ```{r}
-saveRDS(stromals.subbed, "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/objects/5TGM1_StromalsOnly_Annotated_21PCs_ContamRemoved_FinalObject.rds")
+saveRDS(stromals.subbed, "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/objects/5TGM1_StromalsOnly_Annotated_Object.rds")
 ```
 

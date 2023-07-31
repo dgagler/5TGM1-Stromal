@@ -3,8 +3,9 @@ title: "EndoMT_Exploration"
 output: html_document
 date: "2023-06-12"
 ---
+Code exploring endoMT in the 5TGM1 dataset. Mimics analysis done in https://pubmed.ncbi.nlm.nih.gov/33561425/
 
-# Libraries
+Libraries
 ```{r}
 library(Seurat)
 library(ggplot2)
@@ -12,21 +13,16 @@ library(ggpubr)
 library(grid)
 library(gridExtra)
 library(patchwork)
-library(monocle)
-library(monocle3)
-
-#colors <- c("#F8766D", "#B79F00", "#00BA38", "#00BFC4", "#619CFF", "#F564E3")
 ```
-# Load in stromal data
+Load in stromal data
 ```{r}
 stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/objects/Rerun_Mouse5TG_StromalsOnly_AnnotatedObject6_21PCs_NoLib_FIXEDLIBRARIES_6.rds")
 ```
-# Subset celltype
+Subset MSCOLCs and BMECs
 ```{r}
 subtype <- subset(stromals, subset = celltypes_ECsubbed %in% c("Sinusoidal ECs", "Arterial ECs", "MSCs", "OLCs"))
 ```
-# Standard workflow
-# Doing this because we want the most variable genes for the fibroblasts specifically, not for the entire dataset
+Standard workflow
 ```{r}
 subtype <- ScaleData(subtype)
 subtype <- FindVariableFeatures(subtype, nfeatures = 2000)
@@ -35,12 +31,8 @@ subtype <- FindNeighbors(subtype, dims = 1:10)
 subtype <- FindClusters(subtype, resolution = 0.2)
 subtype <- RunUMAP(subtype, dims = 1:10)
 DimPlot(subtype)
-
-#subtype <- subset(subtype, subset = seurat_clusters %in% c("0", "1", "2", "3", "4", "5"))
-#DimPlot(subtype, split.by = "case.control")
-#ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/BMECs_Subclustered_NotSplit_UMAP.png", height = 5, width = 8)
 ```
-# Explore genes
+Explore genes
 ```{r}
 # Subsetting out cells with Cdh5 expression (this is what they did in the paper)
 cdh5 <- subset(stromals, subset = Cdh5 > 0)
@@ -52,7 +44,9 @@ cdh5 <- FindNeighbors(cdh5, dims = 1:10)
 cdh5 <- FindClusters(cdh5, resolution = 0.2)
 cdh5 <- RunUMAP(cdh5, dims = 1:10)
 DimPlot(cdh5)
-
+```
+Violin plots of genes used in paper
+```{r}
 VlnPlot(cdh5, features = c("Cdh5", "Pecam1", "Eng", "Emcn", "Prrx1", "Col1a1", "Snai2", "Twist1", "Twist2", "Zeb2", "Yap1", "Cxcl12"), ncol = 4)
 ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Cdh5_Pos_Cells_EndoMT_Genes_ViolinPlots.png", height = 12, width = 18)
 DimPlot(cdh5)
@@ -61,10 +55,8 @@ DimPlot(cdh5, group.by = "celltypes_ECsubbed")
 ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Cdh5_Pos_Cells__CellTypes_UMAP.png", height = 4, width = 5)
 DimPlot(cdh5, split.by = "case.control")
 ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Cdh5_Pos_Cells_ConditionSplit_UMAP.png", height = 4, width = 8)
-
 ```
-
-# Selecting endoMT cells
+Selecting endoMT cells
 ```{r}
 # Based on violin plots above
 endoMTcells <- subset(cdh5, subset = seurat_clusters %in% c("4", "6"))
@@ -98,7 +90,7 @@ saveRDS(subtype, "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/objects/
 ################# Generating "Final Figure" #################
 #############################################################
 
-# Emulating format from original plot -
+Emulating format from original plot -
 
 AAABBBBB where A = UMAP of BMEC + MSCOLC, B = feature plots of top marker genes for those pops, C = Cdh5 UMAP, D = highlighting EndoMT cells UMAP, E = GSEA, and F = EndoMT violin plots 
 AAABBBBB
@@ -106,11 +98,11 @@ CCCDDDEE
 CCCDDDEE
 FFFFFFFF
 FFFFFFFF
-# Figure A
+Figure A
 ```{r}
 figA <- DimPlot(subtype, group.by = "seurat_clusters") + ggtitle("BMECs and MSC/OLCs")
 ```
-# Figure B
+Figure B
 ```{r}
 p1.ft <- FeaturePlot(subtype, features = c("Cdh5")) + theme(axis.title.x = element_blank()) + NoLegend()
 p2.ft <- FeaturePlot(subtype, features = c("Pecam1")) + theme(axis.title.x = element_blank(),
@@ -125,15 +117,15 @@ p6.ft <- FeaturePlot(subtype, features = c("Ngfr")) + theme(
 
 figB <- (p1.ft | p2.ft | p3.ft) / (p4.ft | p5.ft | p6.ft)
 ```
-# Figure C
+Figure C
 ```{r}
 figC <- DimPlot(cdh5, group.by = "seurat_clusters") + ggtitle("Cdh5 expressing cells")
 ```
-# Figure D
+Figure D
 ```{r}
 figD <- DimPlot(object = cdh5, cells.highlight = select.cells, cols.highlight = "red", cols = "gray", order = TRUE, label = T, label.size = 5, repel = T) + NoLegend()
 ```
-# Figure D
+Figure D
 ```{r}
 #VlnPlot(cdh5, features = c("Cdh5", "Pecam1", "Eng", "Emcn", "Prrx1", "Col1a1", "Snai2", "Twist1", "Twist2", "Zeb2", "Yap1", "Cxcl12"), ncol = 4)
 Idents(cdh5) <- "seurat_clusters"
@@ -175,7 +167,7 @@ p10.vln <- VlnPlot(cdh5, features = c("Cxcl12")) + theme(axis.title.x = element_
 
 figE <- (p1.vln | p2.vln | p3.vln | p4.vln | p5.vln ) / (p6.vln | p7.vln | p8.vln | p9.vln | p10.vln)
 ```
-# Figure 6 Patchwork
+Figure 6 Patchwork
 ```{r fig.height = 11, fig.width = 11}
 layout <- "
 AAABBBBBBB
@@ -195,38 +187,4 @@ ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/Figure6_EndoMT.png
 VlnPlot(cdh5, features = c("Tgfbr1", "Tgfbr2", "Tgfbr3")) + NoLegend()
 ```
 
-
-# Senscence
-```{r}
-stromals2 <- readRDS("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/objects/Rerun_Mouse5TG_StromalsOnly_AnnotatedObject6_21PCs_NoLib_FIXEDLIBRARIES_6.rds")
-msc <- subset(stromals2, subset = celltypes_ECsubbed %in% c("MSCs", "OLCs"))
-
-msc <- ScaleData(msc)
-msc <- FindVariableFeatures(msc, nfeatures = 2000)
-msc <- RunPCA(msc, npcs = 10)
-msc <- FindNeighbors(msc, dims = 1:10)
-msc <- FindClusters(msc, resolution = 0.2)
-msc <- RunUMAP(msc, dims = 1:10)
-msc <- subset(msc, subset = seurat_clusters %in% c("0", "1", "2", "3", "4", "5"))
-DimPlot(msc)
-ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/MSCOLC_UMAP.png", height = 4, width = 5)
-```
-# Checking senescence expression as per the table Faith sent
-```{r}
-# only included genes with substantial expression in at least 1 cluster
-VlnPlot(msc, features = c("Il6st", "Il7","Il15", "Cxcl1", "Csf2", "Ifngr1", "Cxcl13", "Mif", "Fgf7", "Vegfa",  "Kitl", "Cxcl12", "Igfbp3",
-                          "Igfbp4", "Igfbp7", "Icam1", "Icam3", "Tnfrsf1a", "Il6st", "Fgfr2", "Mmp13", "Mmp14", "Timp1", "Timp2", "Serpine1", "Serpine2", "Ctsb",
-                          "Fn1", "Lama1", "Lamb1"), ncol=7)
-ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/AllPos_SenescenceGenes_VlnPlots.png", height = 12, width = 21)
-
-```
-# Find markers for cluster 5
-```{r}
-aberrant.cluster <- FindAllMarkers(msc)
-cluster5 <- aberrant.cluster[aberrant.cluster$cluster == "5",]
-cluster5 <- cluster5[cluster5$p_val_adj < 0.05,]
-cluster5 <- cluster5 %>% arrange((p_val_adj))
-rownames(cluster5) <- cluster5$gene
-write.csv(cluster5, "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun//MMaberrantCluster_DEgenes.csv")
-```
 

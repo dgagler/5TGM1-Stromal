@@ -1,0 +1,50 @@
+---
+title: "SubsetObjectCreation"
+output: html_document
+date: "2023-07-31"
+---
+
+```{r}
+library(Seurat)
+```
+Load in data
+```{r}
+stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/5TGM1_StromalsOnly_Annotated_21PCs_ContamRemoved_FinalObject.rds")
+```
+Subset MSC/OLCs cells
+```{r}
+mscolcs <- subset(stromals, subset = celltypes %in% c("MSC", "OLC"))
+```
+Run standard workflow
+```{r}
+mscolcs <- ScaleData(mscolcs)
+mscolcs <- FindVariableFeatures(mscolcs, nfeatures = 2000)
+mscolcs <- RunPCA(mscolcs, npcs = 10)
+mscolcs <- FindNeighbors(mscolcs, dims = 1:10)
+mscolcs <- FindClusters(mscolcs, resolution = 0.2)
+mscolcs <- RunUMAP(mscolcs, dims = 1:10)
+mscolcs <- subset(mscolcs, subset = seurat_clusters %in% c("0", "1", "2", "3", "4", "5"))
+DimPlot(mscolcs)
+```
+Save it out
+```{r}
+saveRDS(mscolcs, "/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/5TGM1_MSCOLC_Object.rds")
+```
+# Now do it for BMECs
+```{r}
+bmecs <- subset(stromals, subset = celltypes %in% c("AEC", "SEC"))
+```
+Run standard workflow
+```{r}
+bmecs <- ScaleData(bmecs)
+bmecs <- FindVariableFeatures(bmecs, nfeatures = 2000)
+bmecs <- RunPCA(bmecs, npcs = 7)
+bmecs <- FindNeighbors(bmecs, dims = 1:7)
+bmecs <- FindClusters(bmecs, resolution = 0.15)
+bmecs <- RunUMAP(bmecs, dims = 1:7)
+DimPlot(bmecs)
+```
+Save it out
+```{r}
+saveRDS(bmecs, "/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/5TGM1_BMEC_Object.rds")
+```

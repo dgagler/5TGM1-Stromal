@@ -1,9 +1,9 @@
 ---
-title: "5TGM1_Stromal_QC_Integration_StandardWorkflow"
+title: "5TGM1_Stromal_QC_Filtering"
 output: html_document
 date: "2023-06-01"
 ---
-# R Markdown used to preprocess raw data, perform quality check, filter out low quality cells, integrate libraries, and perform standward workflow on 5TGM1 stromal single-cell data.
+# R Markdown used to preprocess raw data, perform quality checks on both the RNA and hashtag data, and filter out low quality cells for each library. 
 
 # Created 6/1/2023 by Dylan Gagler, MSc - dylan.gagler@nyulangone.org
 
@@ -384,60 +384,9 @@ postfilter_total <- sum(length(colnames(lib1)), length(colnames(lib2)), length(c
 print(paste0("pre-filtering cell counts = ", prefilter_total))
 print(paste0("post-filtering cell counts = ", postfilter_total))
 print(paste0("fraction lost = ", 1 - postfilter_total/prefilter_total))
-```
-# Setting up libraries for integration
-```{r}
+
 lib.list <- c(lib1, lib2, lib3, lib5, lib6)
 
-# Normalize and find variable features for each lib
-lib.list <- lapply(X = lib.list, FUN = function(x) {
-    x <- NormalizeData(x) 
-    x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
-})
+saveRDS(lib.list, "/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/5TGM1_Code/QC_Filtered_Libs.rds")
+```
 
-# select features that are repeatedly variable across datasets for integration run PCA on each
-# dataset using these features
-features <- SelectIntegrationFeatures(object.list = lib.list)
-lib.list <- lapply(X = lib.list, FUN = function(x) {
-    x <- ScaleData(x, features = features, verbose = FALSE)
-    x <- RunPCA(x, features = features, verbose = FALSE)
-})
-```
-# Find anchors
-```{r}
-lib.anchors <- FindIntegrationAnchors(object.list = lib.list, anchor.features = features, reduction = "cca")
-```
-# Integrate data
-```{r}
-# this command creates an 'integrated' data assay
-lib.combined <- IntegrateData(anchorset = lib.anchors)
-```
-# Create new variable and dump old
-```{r}
-mouseBM <- lib.combined
-
-rm(lib.combined, lib1, lib2, lib3, lib4, lib5, lib6)
-```
-# Standard workflow time
-```{r}
-DefaultAssay(mouseBM) <- "integrated"
-
-mouseBM <- ScaleData(mouseBM)
-mouseBM <- RunPCA(mouseBM, npcs = 30)
-ElbowPlot(
-  object = mouseBM, 
-  ndims = 30
-) +
-  geom_abline(
-    aes(intercept = 1.75, slope = 0, color = "red"),
-    show.legend = FALSE
-  )
-mouseBM <- FindNeighbors(mouseBM, dims = 1:30)
-mouseBM <- FindClusters(mouseBM, resolution = 0.2)
-mouseBM <- RunUMAP(mouseBM, dims = 1:30)
-DimPlot(mouseBM, label = T, group.by = "integrated_snn_res.0.2")
-```
-# Save out object
-```{r}
-saveRDS(lib.combined, "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/5TGM1_IntegratedObject_StandardWorkflow.rds")
-```

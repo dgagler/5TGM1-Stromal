@@ -1,0 +1,328 @@
+---
+title: "SupplementaryFigures"
+output: html_document
+date: "2023-07-31"
+---
+################################################################################
+Code for generating supplementary figures.
+
+################################################################################
+
+Load libraries
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(ComplexHeatmap)
+library(grid)
+library(gridExtra)
+library(patchwork)
+library(flextable)
+```
+Supplementary Table 1-3. GSEA Top Gene tables
+```{r}
+# Function to clean frames
+clean_frame <- function(df, drop.cols){
+  df <- df[, !names(df) %in% drop.cols]
+  df <- head(df, n = 10)
+  df$`RUNNING ES` <- round(df$`RUNNING ES`, 4)
+  df$PATHWAY <- "ALLOGRAFT REJECTION"
+  df <- df %>%
+    relocate(PATHWAY)
+  df$PATHWAY[2:10] <- ""
+  return(df)
+}
+```
+Supplementary Table 1 - All Stromal GSEA Top Genes
+```{r}
+require(data.table)
+allograft <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_ALLOGRAFT_REJECTION.tsv"))
+coagulation <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_COAGULATION.tsv"))
+myc <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_MYC_TARGETS_V1.tsv"))
+oxi.phos <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_OXIDATIVE_PHOSPHORYLATION.tsv"))
+angio <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_ANGIOGENESIS.tsv"))
+inter.alpha <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_INTERFERON_ALPHA_RESPONSE.tsv"))
+inter.gamma <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_INTERFERON_GAMMA_RESPONSE.tsv"))
+
+drop.cols <- c("NAME", "TITLE", "RANK METRIC SCORE", "CORE ENRICHMENT", "V8") # Columns to drop
+
+allo.df <- clean_frame(allograft, drop.cols)
+coag.df <- clean_frame(coagulation, drop.cols)
+myc.df <- clean_frame(myc, drop.cols)
+oxi.df <- clean_frame(oxi.phos, drop.cols)
+angio.df <- clean_frame(angio, drop.cols)
+interA.df <- clean_frame(inter.alpha, drop.cols)
+interG.df <- clean_frame(inter.gamma, drop.cols)
+
+# Combine frames we want for final output
+stromal.combined <- rbind(interA.df, interG.df, oxi.df, myc.df)
+colnames(stromal.combined) <- c("Pathway", "Gene", "Gene Rank", "Running ES") # Rename columns
+table_caption <- c("Top GSEA Genes in MM Stromal Cells", "Supplementary Table 1") # Define captions
+
+# Run it
+stromal.table <- stromal.combined |>
+  flextable() |>
+  add_header_lines(values = rev(table_caption)) |>
+  padding(padding = 0, part = "all") |>
+  padding(padding.right = 10, part = "all") |>
+  autofit() |>
+  bold(part = "header", i = 1) |>
+  italic(part = "header", i = c(2:length(table_caption))) |>
+  align(part = "header", i = c(1:length(table_caption)), align = "left") |>
+  border(part = "head", i = c(1:length(table_caption)),
+         border = list("width" = 0, color = "black", style = "solid"))
+save_as_docx(stromal.table, path = "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_GSEA_TopGenes_SupplementaryTable1.docx", align = "center")
+```
+Supplementary Table 2 - MSC/OLC GSEA Top Genes
+```{r}
+require(data.table)
+complement <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/MSCOLC_HALLMARK_COMPLEMENT.tsv"))
+allograft <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/MSCOLC_HALLMARK_ALLOGRAFT_REJECTION.tsv"))
+inter.alpha <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/MSCOLC_HALLMARK_INTERFERON_ALPHA_RESPONSE.tsv"))
+inter.gamma <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/MSCOLC_HALLMARK_INTERFERON_GAMMA_RESPONSE.tsv"))
+oxi.phos <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/MSCOLC_HALLMARK_OXIDATIVE_PHOSPHORYLATION.tsv"))
+
+drop.cols <- c("NAME", "TITLE", "RANK METRIC SCORE", "CORE ENRICHMENT", "V8") # Columns to drop
+
+comp.df <- clean_frame(complement, drop.cols)
+allo.df <- clean_frame(allograft, drop.cols)
+interA.df <- clean_frame(inter.alpha, drop.cols)
+interG.df <- clean_frame(inter.gamma, drop.cols)
+oxi.df <- clean_frame(oxi.phos, drop.cols)
+
+# Combine frames we want for final output
+mscolc.combined <- rbind(interA.df, interG.df, oxi.df)
+colnames(mscolc.combined) <- c("Pathway", "Gene", "Gene Rank", "Running ES") # Rename columns
+table_caption <- c("Top GSEA Genes in MM MSC/OLC", "Supplementary Table 2") # Define captions
+
+# Run it
+mscolc.table <- mscolc.combined |>
+  flextable() |>
+  add_header_lines(values = rev(table_caption)) |>
+  padding(padding = 0, part = "all") |>
+  padding(padding.right = 10, part = "all") |>
+  autofit() |>
+  bold(part = "header", i = 1) |>
+  italic(part = "header", i = c(2:length(table_caption))) |>
+  align(part = "header", i = c(1:length(table_caption)), align = "left") |>
+  border(part = "head", i = c(1:length(table_caption)),
+         border = list("width" = 0, color = "black", style = "solid"))
+save_as_docx(mscolc.table, path = "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/MSCOLC_GSEA_TopGenes_SupplementaryTable2.docx", align = "center")
+```
+Supplementary Table 3 - BMEC GSEA Top Genes
+```{r}
+# Load in tables
+require(data.table)
+allo.reject <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_HALLMARK_ALLOGRAFT_REJECTION.tsv"))
+inflam.respo <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_HALLMARK_INFLAMMATORY_RESPONSE.tsv"))
+inter.alpha <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_HALLMARK_INTERFERON_ALPHA_RESPONSE.tsv"))
+inter.gamma <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_HALLMARK_INTERFERON_GAMMA_RESPONSE.tsv"))
+myc.targets <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_HALLMARK_MYC_TARGETS_V1.tsv"))
+oxi.phos <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_HALLMARK_OXIDATIVE_PHOSPHORYLATION.tsv"))
+
+drop.cols <- c("NAME", "TITLE", "RANK METRIC SCORE", "CORE ENRICHMENT", "V8") # Columns to drop
+
+allo.df <- clean_frame(allo.reject, drop.cols)
+inflam.df <- clean_frame(inflam.respo, drop.cols)
+interA.df <- clean_frame(inter.alpha, drop.cols)
+interG.df <- clean_frame(inter.gamma, drop.cols)
+myc.df <- clean_frame(myc.targets, drop.cols)
+oxi.df <- clean_frame(oxi.phos, drop.cols)
+
+# Combine frames we want for final output
+bmec.combined <- rbind(interA.df, interG.df, oxi.df, inflam.df)
+colnames(bmec.combined) <- c("Pathway", "Gene", "Gene Rank", "Running ES") # Rename columns
+table_caption <- c("Top GSEA Genes in MM BMEC", "Supplementary Table 3") # Define captions
+
+# Run it
+bmec.table <- bmec.combined |>
+  flextable() |>
+  add_header_lines(values = rev(table_caption)) |>
+  padding(padding = 0, part = "all") |>
+  padding(padding.right = 10, part = "all") |>
+  autofit() |>
+  bold(part = "header", i = 1) |>
+  italic(part = "header", i = c(2:length(table_caption))) |>
+  align(part = "header", i = c(1:length(table_caption)), align = "left") |>
+  border(part = "head", i = c(1:length(table_caption)),
+         border = list("width" = 0, color = "black", style = "solid"))
+  save_as_docx(bmec.table, path = "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_GSEA_TopGenes_SupplementaryTable3.docx", align = "center")
+show_col(hue_pal()(7))
+
+DimPlot(stromals)
+```
+MSCOLC subcluster relative abundances
+```{r}
+healthy.subtype <- subset(subtype, subset = case.control == "Healthy")
+myeloma.subtype <- subset(subtype, subset = case.control == "Myeloma")
+
+healthy.value <- as.numeric(table(healthy.subtype@meta.data$seurat_clusters))[1:6]
+myeloma.value <- as.numeric(table(myeloma.subtype@meta.data$seurat_clusters))[1:6]
+
+healthy.frac <- healthy.value/sum(healthy.value)
+myeloma.frac <- myeloma.value/sum(myeloma.value)
+
+healthy.labels <- paste(as.character(round(healthy.frac, digits=4)*100), "%", sep="")
+myeloma.labels <- paste(as.character(round(myeloma.frac, digits=4)*100), "%", sep="")
+
+healthy.pie <- data.frame(group=c("Cluster 0", "Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5"), 
+                          value = healthy.value, 
+                          perc = healthy.frac, 
+                          labels = healthy.labels)
+
+myeloma.pie <- data.frame(group=c("Cluster 0", "Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5"), 
+                          value = myeloma.value, 
+                          perc = myeloma.frac, 
+                          labels = myeloma.labels)
+
+healthy.pie <- healthy.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(healthy.pie$value)*100) %>%
+  mutate(ypos = cumsum(prop) - 0.5 * prop)
+
+myeloma.pie <- myeloma.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(myeloma.pie$value)*100) %>%
+  mutate(ypos = cumsum(prop) - 0.5 * prop)
+
+healthy.pie.plot <- ggplot(healthy.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = rep(c("white")),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) + 
+  scale_fill_manual(values = stromal.colors) +
+  coord_polar(theta = "y") +
+  ggtitle("Healthy") +
+  theme_void() + NoLegend() + theme(plot.title = element_text(hjust = 0.5))
+
+myeloma.pie.plot <- ggplot(myeloma.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = rep(c("white")),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) + 
+  scale_fill_manual(values = stromal.colors) +
+  coord_polar(theta = "y") +
+  ggtitle("Myeloma") + theme_void() + theme(plot.title = element_text(hjust = 0.5))
+  
+patchwork.pie <- healthy.pie.plot | myeloma.pie.plot
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/SupplementaryFigure8_MSCOLC_SubclusterPieCharts.png", width = 10, height = 6)
+```
+#
+```{r}
+healthy.subtype <- subset(subtype, subset = case.control == "Healthy")
+myeloma.subtype <- subset(subtype, subset = case.control == "Myeloma")
+
+healthy.value <- as.numeric(table(healthy.subtype@meta.data$seurat_clusters))[1:6]
+myeloma.value <- as.numeric(table(myeloma.subtype@meta.data$seurat_clusters))[1:6]
+
+healthy.frac <- healthy.value/sum(healthy.value)
+myeloma.frac <- myeloma.value/sum(myeloma.value)
+
+healthy.labels <- paste(as.character(round(healthy.frac, digits=4)*100), "%", sep="")
+myeloma.labels <- paste(as.character(round(myeloma.frac, digits=4)*100), "%", sep="")
+
+healthy.pie <- data.frame(group=c("Cluster 0", "Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5"), 
+                          value = healthy.value, 
+                          perc = healthy.frac, 
+                          labels = healthy.labels)
+
+myeloma.pie <- data.frame(group=c("Cluster 0", "Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5"), 
+                          value = myeloma.value, 
+                          perc = myeloma.frac, 
+                          labels = myeloma.labels)
+
+healthy.pie <- healthy.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(healthy.pie$value)*100) %>%
+  mutate(ypos = cumsum(prop) - 0.5 * prop)
+
+myeloma.pie <- myeloma.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(myeloma.pie$value)*100) %>%
+  mutate(ypos = cumsum(prop) - 0.5 * prop)
+
+healthy.pie.plot <- ggplot(healthy.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = rep(c("white")),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) + 
+  scale_fill_manual(values = stromal.colors) +
+  coord_polar(theta = "y") +
+  ggtitle("Healthy") +
+  theme_void() + NoLegend() + theme(plot.title = element_text(hjust = 0.5))
+
+myeloma.pie.plot <- ggplot(myeloma.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = rep(c("white")),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) + 
+  scale_fill_manual(values = stromal.colors) +
+  coord_polar(theta = "y") +
+  ggtitle("Myeloma") + theme_void() + theme(plot.title = element_text(hjust = 0.5))
+  
+patchwork.pie <- healthy.pie.plot | myeloma.pie.plot
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/SupplementaryFigure11_BMEC_SubclusterPieCharts.png", width = 10, height = 6)
+```
+# Temp testing pie chart for Fig 3 overall stromal populations
+```{r}
+stromal.colors <- c("#F8766D", "#C49A00", "#53B400", "#00C094", "#00B6EB", "#A58AFF", "#FB61D7")
+
+right.levels <- levels(stromals@meta.data$celltypes_ECsubbed)
+healthy.values <- as.numeric(table(healthy@meta.data$celltypes_ECsubbed))
+myeloma.values <- as.numeric(table(myeloma@meta.data$celltypes_ECsubbed))
+
+healthy.frac <- healthy.values/sum(healthy.values)
+myeloma.frac <- myeloma.values/sum(myeloma.values)
+
+healthy.labels <- paste(as.character(round(healthy.frac, digits=4)*100), "%", sep="")
+myeloma.labels <- paste(as.character(round(myeloma.frac, digits=4)*100), "%", sep="")
+
+healthy.pie <- data.frame(group=c("SECs", "AECs", "Fibroblasts", "MSCs", "OLCs", "Pericytes", "Chondrocytes"), 
+                          value = healthy.values, 
+                          perc = healthy.frac, 
+                          labels = healthy.labels)
+
+myeloma.pie <- data.frame(group=c("SECs", "AECs", "Fibroblasts", "MSCs", "OLCs", "Pericytes", "Chondrocytes"), 
+                          value = myeloma.values, 
+                          perc = myeloma.frac, 
+                          labels = myeloma.labels)
+
+healthy.pie <- healthy.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(healthy.pie$value)*100) %>%
+  mutate(ypos = cumsum(prop) - 0.5 * prop)
+
+myeloma.pie <- myeloma.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(myeloma.pie$value)*100) %>%
+  mutate(ypos = cumsum(prop) - 0.5 * prop)
+
+healthy.pie.plot <- ggplot(healthy.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = rep(c("white")),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) + 
+  scale_fill_manual(values = stromal.colors) +
+  coord_polar(theta = "y") +
+  ggtitle("Healthy") +
+  theme_void() + NoLegend() + theme(plot.title = element_text(hjust = 0.5))
+
+myeloma.pie.plot <- ggplot(myeloma.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = rep(c("white")),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) + 
+  scale_fill_manual(values = stromal.colors) +
+  coord_polar(theta = "y") +
+  ggtitle("Myeloma") + theme_void() + theme(plot.title = element_text(hjust = 0.5))
+  
+patchwork.pie <- healthy.pie.plot | myeloma.pie.plot
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/Figure3_PieCharts.png", width = 10, height = 6)
+```

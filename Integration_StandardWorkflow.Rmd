@@ -1,0 +1,80 @@
+---
+title: "Integration_StandardWorkflow"
+output: html_document
+date: "2023-07-31"
+---
+
+This code takes the QC filtered cells and integrates them together using Seurat. Methodology based off of this vignette: https://satijalab.org/seurat/articles/integration_introduction.html
+
+In short, this involves normalizing and finding variable genes for each library, selecting integration features that are highly variable across libraries, scaling and running a PCA on each library using these shared variable features, finding integration anchors within the shared features, and finally integrating the data together using the integration anchors.
+
+Afterwards, we perform a "standard workflow" on the integrated data, involving scaling, a new PCA, finding neighbors, and clustering.
+
+Load up libraries
+```{r}
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+
+options(future.globals.maxSize=1000000000000000)
+```
+Setting up libraries for integration
+```{r}
+lib.list <- readRDS("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/5TGM1_Code/QC_Filtered_Libs.rds")
+
+lib.list <- c(lib1, lib2, lib3, lib5, lib6)
+
+# Normalize and find variable features for each lib
+lib.list <- lapply(X = lib.list, FUN = function(x) {
+    x <- NormalizeData(x) 
+    x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+})
+
+# select features that are repeatedly variable across datasets for integration run PCA on each
+# dataset using these features
+features <- SelectIntegrationFeatures(object.list = lib.list)
+lib.list <- lapply(X = lib.list, FUN = function(x) {
+    x <- ScaleData(x, features = features, verbose = FALSE)
+    x <- RunPCA(x, features = features, verbose = FALSE)
+})
+```
+Find anchors
+```{r}
+lib.anchors <- FindIntegrationAnchors(object.list = lib.list, anchor.features = features, reduction = "cca")
+```
+Integrate data
+```{r}
+# This command creates an 'integrated' data assay
+lib.combined <- IntegrateData(anchorset = lib.anchors)
+```
+Create new variable and dump old
+```{r}
+mouseBM <- lib.combined
+
+rm(lib.combined, lib1, lib2, lib3, lib4, lib5, lib6)
+```
+Standard workflow time
+```{r}
+DefaultAssay(mouseBM) <- "integrated"
+
+mouseBM <- ScaleData(mouseBM)
+mouseBM <- RunPCA(mouseBM, npcs = 30)
+
+ElbowPlot(
+  object = mouseBM, 
+  ndims = 30
+) +
+  geom_abline(
+    aes(intercept = 1.75, slope = 0, color = "red"),
+    show.legend = FALSE
+  )
+
+mouseBM <- FindNeighbors(mouseBM, dims = 1:30)
+mouseBM <- FindClusters(mouseBM, resolution = 0.2)
+mouseBM <- RunUMAP(mouseBM, dims = 1:30)
+DimPlot(mouseBM, label = T, group.by = "integrated_snn_res.0.2")
+```
+Save out object
+```{r}
+saveRDS(lib.combined, "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/5TGM1_IntegratedObject_StandardWorkflow.rds")
+```
