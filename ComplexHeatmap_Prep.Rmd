@@ -1,0 +1,333 @@
+---
+title: "ComplexHeatmap_Prep"
+output: html_document
+date: "2023-02-14"
+---
+
+# Libraries
+```{r}
+library(Seurat)
+library(ggplot2)
+library(circlize)
+library(ComplexHeatmap)
+library(ggpubr)
+library(grid)
+library(gridExtra)
+library(tidyverse)
+library(scales)
+show_col(hue_pal()(6))
+
+colors <- c("#F8766D", "#B79F00", "#00BA38", "#00BFC4", "#619CFF", "#F564E3")
+```
+# Load in stromal data
+```{r}
+stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/Rerun_Mouse5TG_StromalsOnly_AnnotatedObject6_21PCs_NoLib_FIXEDLIBRARIES_6.rds")
+```
+# Subset celltype
+```{r}
+subtype <- subset(stromals, subset = celltypes_ECsubbed %in% c("Sinusoidal ECs", "Arterial ECs"))
+```
+# Standard workflow
+# Doing this because we want the most variable genes for the fibroblasts specifically, not for the entire dataset
+```{r}
+subtype <- ScaleData(subtype)
+subtype <- FindVariableFeatures(subtype, nfeatures = 2000)
+subtype <- RunPCA(subtype, npcs = 5)
+subtype <- FindNeighbors(subtype, dims = 1:5)
+subtype <- FindClusters(subtype, resolution = 0.12)
+subtype <- RunUMAP(subtype, dims = 1:5)
+DimPlot(subtype, split.by = "case.control")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_Subclustered_ConditionSplit_UMAP.png", height = 4, width = 8)
+```
+
+# Identifying and removing B cell contam
+```{r}
+FeaturePlot(subtype, features = c("Cd79a"))
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_Cd79aContam_UMAP.png", height = 4, width = 8)
+
+FeaturePlot(subtype, features = c("Cdh5"))
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_Cdh5Contam_UMAP.png", height = 4, width = 8)
+
+FeaturePlot(subtype, features = c("Epcam"))
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_EpcamContam_UMAP.png", height = 4, width = 8)
+
+FeaturePlot(subtype, features = c("Lilr4b"))
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_Lilr4bContam_UMAP.png", height = 4, width = 8)
+
+subtype <- subset(subtype, subset = seurat_clusters %in% c("0", "1", "2", "3", "4", "5"))
+Idents(subtype) <- "seurat_clusters"
+DimPlot(subtype, cols = colors, 
+        split.by = "case.control")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_Subclustered_ConditionSplit_UMAP_ContamRemoved.png", height = 5, width = 8)
+```
+# Get differentially expressed genes
+```{r}
+Idents(subtype) <- "case.control" 
+all.markers <- FindAllMarkers(subtype, assay = "RNA")
+all.markers <- all.markers[order(-all.markers$avg_log2FC),]
+```
+# Get DA
+```{r}
+healthy.sub <- subset(subtype, subset = case.control == "Healthy")
+myeloma.sub <- subset(subtype, subset = case.control == "Myeloma")
+
+table(healthy.sub@meta.data$seurat_clusters)/sum(table(healthy.sub@meta.data$seurat_clusters))
+table(myeloma.sub@meta.data$seurat_clusters)/sum(table(myeloma.sub@meta.data$seurat_clusters))
+table(subtype@meta.data$seurat_clusters)/sum(table(subtype@meta.data$seurat_clusters))
+
+```
+
+# Top N logFC genes
+```{r}
+# top100_pos_lfc_genes <- all.markers %>%
+#                           dplyr::arrange(p_val_adj) %>%
+#                           dplyr::filter(avg_log2FC > 0) %>%
+#                           dplyr::select(gene) %>%
+#                           head(n = 300) %>%
+#                           purrr::as_vector()
+# 
+# top100_neg_lfc_genes <- all.markers %>%
+#                           dplyr::arrange(p_val_adj) %>%
+#                           dplyr::filter(avg_log2FC < 0) %>%
+#                           dplyr::select(gene) %>%
+#                           head(n = 300) %>%
+#                           purrr::as_vector()
+```
+### For use when getting gene order for different clusters
+```{r}
+output_gene_order <- c()
+
+for(i in c("0", "1", "2", "3", "4", "5")) {
+  print(i)
+
+  cluster_genes <- all.markers %>% filter(cluster == i) %>% dplyr::arrange(p_val_adj) %>%
+                      dplyr::filter(avg_log2FC > 0) %>%
+                      dplyr::select(gene) %>%
+                      head(n = 15) %>%
+                      purrr::as_vector()
+  print(cluster_genes)
+
+  output_gene_order <- c(output_gene_order, cluster_genes)
+}
+
+output_gene_order <- unique(output_gene_order)
+```
+### For use when using case/control markers and gene orders
+```{r}
+output_gene_order <- c()
+
+for(i in c("Healthy", "Myeloma")) {
+  print(i)
+
+  cluster_genes <- all.markers %>% dplyr::filter(cluster == i) %>% dplyr::arrange(p_val_adj) %>%
+                      dplyr::filter(avg_log2FC > 0) %>%
+                      dplyr::select(gene) %>%
+                      head(n = 80) %>%
+                      purrr::as_vector()
+  print(cluster_genes)
+
+  output_gene_order <- c(output_gene_order, cluster_genes)
+}
+
+output_gene_order <- unique(output_gene_order)
+```
+# Subset matrix by top genes
+```{r}
+matrix <- subtype@assays$RNA@scale.data
+#matrix.subset <- matrix[rownames(matrix) %in% c(top100_pos_lfc_genes, top100_neg_lfc_genes),]
+matrix.roworder.subset <- matrix[rownames(matrix) %in% output_gene_order,]
+
+output_gene_order_sub <- output_gene_order[output_gene_order %in% rownames(matrix.roworder.subset)]
+```
+# Get annotation metadata
+```{r}
+annotation <- HeatmapAnnotation("Disease Status" = subtype@meta.data$case.control,
+                                "Seurat Cluster" = subtype@meta.data$seurat_clusters,
+                                simple_anno_size = unit(3, "mm"),
+                                col = list("Disease Status" = c("Healthy" = "green", 
+                                                                "Myeloma" = "purple"),
+                                           "Seurat Cluster" = c("0" = "#F8766D",
+                                                         "1" = "#B79F00",
+                                                         "2" = "#00BA38",
+                                                         "3" = "#00BFC4",
+                                                         "4" = "#619CFF",
+                                                         "5" = "#F564E3"
+                                                         )))
+
+col_fun = colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+```
+# Separate legend to include?
+```{r}
+lgd1 = Legend(col_fun = col_fun, title = "Scaled Expression")
+lgd2 = Legend(title = "Disease Status", labels = c("Healthy", "Myeloma"), legend_gp = gpar(fill = c("green", "purple")))
+lgd3 = Legend(title = "Seurat Cluster", labels = c("0", "1", "2", "3", "4", "5"),
+              legend_gp = gpar(fill = colors))
+pd = packLegend(lgd1, lgd2, lgd3, direction = "vertical")
+draw(pd, row_title = "bals")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCLineage_VerticalLegend_ComplexHeatmap.png", width = 1, height = 5)
+
+```
+
+# Complex heatmap
+```{r}
+Heatmap(matrix.roworder.subset, cluster_rows = F, cluster_columns = TRUE,
+        row_order = output_gene_order_sub,
+        show_column_dend = F,
+        col = col_fun,
+        column_names_gp = gpar(fontsize = 0), row_names_gp = gpar(fontsize = 4.5),
+        clustering_distance_columns = "euclidean", clustering_method_columns = "average",
+        column_dend_height = unit(40,"mm"), row_dend_width = unit(40, "mm"),
+        top_annotation = annotation,
+        heatmap_legend_param = list(title = "Scaled Expression")
+        )
+#ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCLineage_Monocle_SeuratClusters_ComplexHeatmap.png", width = 10, height = 20)
+
+#DimPlot(subtype, cols = c("#F8766D", "#B79F00", "#00BA38", "#00BFC4", "#619CFF", "#F564E3", "#C77CFF"))
+#ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCLineage_SeuratClusters_UMAP.png", width = 10, height = 20)
+```
+
+# Differential abundance
+```{r}
+table(subtype@meta.data$seurat_clusters)/sum(table(subtype@meta.data$seurat_clusters))
+```
+
+
+# Testoo
+```{r}
+# Adhesions
+VlnPlot(subtype, features = c("Jag1", "Vcam1", "Icam1"), split.by = "case.control", group.by = "seurat_clusters")
+FeaturePlot(subtype, features = c("Jag1", "Icam1", "Vcam1"), split.by = "case.control")
+
+# Next step
+VlnPlot(subtype, features = c("Flt4", "Cdh5", "Pecam1", "Ly6a", "Emcn"), split.by = "case.control", group.by = "seurat_clusters")
+FeaturePlot(subtype, features = c("Flt1", "Kdr", "Flt4"), split.by = "case.control")
+
+VlnPlot(subtype, features = c("Il6"), split.by = "case.control", group.by = "seurat_clusters")
+
+#
+VlnPlot(subtype, features = c("Fgf23", "Dkk2", "Stab2", "Rgs4", 
+                              "Axin2", "Apcdd1", "Lef1", "Tcf7",
+                              "Rgs4", "Angptl4", "Gpr182", "Flt4",
+                              "Cd34", "Sparcl1"), split.by = "case.control", group.by = "seurat_clusters")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/BothEC_HealthyFunction_CaseControl_ViolinPlots.png", width = 18, height = 10.5)
+
+VlnPlot(subtype, features = c("Nrp1", "Plxna1", "Flt4"), split.by = "case.control")
+
+# "Healthy" EC genes
+VlnPlot(subtype, features = c("Ang2", "Il3ra", "Il6", "Kitl", 
+                              "Jag1", "Cxcl12", "Il1b", 
+                              "Vegfa", "Vegfb",
+                              "Tgfb1", "Tgfb2", "Tgfb3"), split.by = "case.control", group.by = "seurat_clusters")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/BothEC_HealthyFunction_CaseControl_ViolinPlots.png", width = 18, height = 10.5)
+
+# Antigen presenting/immunomodulating
+VlnPlot(subtype, features = c("Cd40", "Cd80", "Cd86", "Icosl", 
+                              "Mb1", "Psmb9", "Psmb8", "Psmb10", 
+                              "Bat1b", "Rfx1", "Cd74", "H2-Aa"), ncol = 5, split.by = "case.control", group.by = "seurat_clusters")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/SEC_ImmunomodulatingGenes_CaseControl_ViolinPlots.png", width = 21, height = 7)
+
+VlnPlot(subtype, features = c("Mgp", "Lpl", "Wif1", "Spp1", "Ibsp",
+                                  "Col16a1", "Tnn",
+                                  "Fbn1", "Igf1",
+                                  "Bglap", "Car3"), ncol = 4, split.by = "case.control")
+```
+
+```{r}
+fibrochondro <- subset(stromals, subset = celltypes_ECsubbed %in% c("Fibroblasts", "Chondrocytes"))
+saveRDS(fibrochondro, "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/5TG_Mouse_FibroblastsChondrocyte_Subset.rds")
+```
+# Tikhonova and Dolgalev based MSC differentiation exploration
+```{r}
+FeaturePlot(subtype, features = "Lepr")
+FeaturePlot(stromals, features = "Lepr")
+FeaturePlot(stromals, features = "Col1a1")
+FeaturePlot(stromals, features = "Cdh5")
+
+DimPlot(stromals, group.by = "celltypes_ECsubbed")
+
+VlnPlot(subtype, features = c("Mgp", "Lpl", "Wif1", "Spp1", "Ibsp"), ncol = 5)
+VlnPlot(subtype, features = c("Mgp", "Lpl", "Wif1", "Spp1", "Ibsp"), ncol = 5, split.by = "case.control")
+
+# P - Cluster 1
+VlnPlot(subtype, features = c("Mgp", "Gpx3", "Serping1", "Lepr", "Tmem176b", 
+                              "Igfbp5", "Malat1", "C1ra", "C4b", "Epas1"), ncol = 5)
+# P - Cluster 2
+VlnPlot(subtype, features = c("Lpl", "Scp2", "Fstl1", "Rgcc", "Mrps6", 
+                              "Pdzrn4", "Mmd", "Np2", "Slc5a3", "Angpt1"), ncol = 5)
+# P - Cluster 3
+VlnPlot(subtype, features = c("Col8a1", "Kcnk2", "Ndnf", "Palld", "Tnfrsf19", 
+                              "Cldn10", "Slc20a2", "Limch1", "Fhl1"), ncol = 5)
+# P - Cluster 4
+VlnPlot(subtype, features = c("Spp1", "Col1a1", "Col13a1", "Mmp13", "Ifitm5", 
+                              "Serpine2", "Mef2c", "Ibsp", "Itgb5", "Aqp1"), ncol = 5)
+# Osteo - Cluster 1
+VlnPlot(subtype, features = c("Tnn", "Postn", "Col16a1", "Lrrc15", "Angptl2", 
+                              "Mmp14", "Alpl", "Ncam1", "Mmp13", "Col5a1"), ncol = 5)
+# Osteo - Cluster 2
+VlnPlot(subtype, features = c("Igfbp7", "Igfbp6", "Mgp", "Fbn1", "Thbs4", 
+                              "Prelp", "Igf1", "Lbp", "Meg3", "Fbln2"), ncol = 5)
+# Osteo - Cluster 3
+VlnPlot(subtype, features = c("Ifitm", "Col11a2", "Car3", "Cgref1", "Bglap", 
+                              "Slc36a2", "Cpz", "Sgm2", "Smpd3", "Mef2c"), ncol = 5)
+
+DimPlot(subtype)
+
+# Full set of bone cells
+bone.subset <- subset(stromals, subset = celltypes_ECsubbed %in% c("MSCs", "OLCs"))
+bone.subset <- ScaleData(bone.subset)
+bone.subset <- FindVariableFeatures(bone.subset, nfeatures = 2000)
+bone.subset <- RunPCA(bone.subset, npcs = 5)
+
+bone.subset <- FindNeighbors(bone.subset, dims = 1:5)
+bone.subset <- FindClusters(bone.subset, resolution = 0.12)
+bone.subset <- RunUMAP(bone.subset, dims = 1:5)
+
+DimPlot(bone.subset, cols = c("#F8766D", "#B79F00", "#00BA38", "#00BFC4", "#619CFF", "#F564E3", "#C77CFF"), split.by = "case.control")
+
+# Pseudotime directions - row 1 = bone, row 2 = adipo
+VlnPlot(subtype, features = c("Bglap", "Runx2", "Col1a1", "Sparc",
+                                  "Lepr", "Adipoq", "Lpl", "Cebpa"), ncol = 4)
+# Igor cluster vs our cluster parallel
+VlnPlot(subtype, features = c("Mgp", "Lpl", "Wif1", "Spp1", "Ibsp",
+                                  "Col16a1", "Tnn", "Fbn1", "Igf1",
+                                  "Bglap", "Car3"), ncol = 4)
+DimPlot(bone.subset, cols = c("#F8766D", "#B79F00", "#00BA38", "#00BFC4", "#619CFF", "#F564E3", "#C77CFF"), split.by = "case.control")
+DimPlot(bone.subset, group.by = "celltypes_ECsubbed", split.by = "case.control")
+
+
+VlnPlot(bone.subset, features = c("Mgp", "Lpl", "Wif1", "Spp1", "Ibsp"), ncol = 5, split.by = "case.control")
+
+# Osteo - Cluster 1
+VlnPlot(subtype, features = c("Tnn", "Postn", "Col16a1", "Lrrc15", "Angptl2", 
+                              "Mmp14", "Alpl", "Ncam1", "Mmp13", "Col5a1"), ncol = 5)
+# Osteo - Cluster 2
+VlnPlot(subtype, features = c("Igfbp7", "Igfbp6", "Mgp", "Fbn1", "Thbs4", 
+                              "Prelp", "Igf1", "Lbp", "Meg3", "Fbln2"), ncol = 5)
+# Osteo - Cluster 3
+VlnPlot(subtype, features = c("Sparc", "Col11a2", "Car3", "Cgref1", "Bglap", 
+                              "Runx2", "Bglap2", "Col1a2", "Smpd3", "Mef2c"), ncol = 5)
+
+VlnPlot(bone.subset, features = c("Tnn", "Postn", "Col16a1", "Lrrc15", "Angptl2", 
+                              "Mmp14", "Alpl", "Ncam1", "Mmp13", "Col5a1"), ncol = 5, split.by = "case.control")
+# Osteo - Cluster 2
+VlnPlot(bone.subset, features = c("Igfbp7", "Igfbp6", "Mgp", "Fbn1", "Thbs4", 
+                              "Prelp", "Igf1", "Lbp", "Meg3", "Fbln2"), ncol = 5, split.by = "case.control")
+# Osteo - Cluster 3
+VlnPlot(bone.subset, features = c("Ifitm", "Col11a2", "Car3", "Cgref1", "Bglap", 
+                              "Slc36a2", "Cpz", "Sgm2", "Smpd3", "Mef2c"), ncol = 5, split.by = "case.control")
+
+# Aggregated good bone markers
+# O1
+VlnPlot(subtype, features = c("Bglap", "Bglap2", "Sparc", "Col1a2", "Mef2c"), split.by = "case.control")
+# O2
+VlnPlot(subtype, features = c("Mmp14", "Alpl", "Ncam1", "Mmp13"), split.by = "case.control")
+# O3
+VlnPlot(subtype, features = c("Igfbp7", "Igf1", "Fbn1", "Mgp", "Prelp", "Lbp"))
+VlnPlot(subtype, features = c("Igfbp7", "Igf1", "Fbn1", "Mgp", "Prelp", "Lbp"), split.by = "case.control")
+
+# Get cluster subset %s
+table(healthy.mscolcs@meta.data$seurat_clusters)/sum(table(healthy.mscolcs@meta.data$seurat_clusters))
+table(myeloma.mscolcs@meta.data$seurat_clusters)/sum(table(myeloma.mscolcs@meta.data$seurat_clusters))
+
+```
+

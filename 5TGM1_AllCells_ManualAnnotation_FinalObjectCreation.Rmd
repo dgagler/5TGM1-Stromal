@@ -1,0 +1,196 @@
+---
+title: "5TGM1_AllCells_ManualAnnotation"
+output: html_document
+date: "2023-06-01"
+---
+
+# Created 6/1/2023 by Dylan Gagler, MSc - dylan.gagler@nyulangone.org
+
+# Code used to manually annotate both the stromal and non-stromal compartment of the mouse BM. Requires the output of the QC/integration step.
+
+# Load libraries
+```{r}
+library(Seurat)
+library(ggplot2)
+```
+# Read in data
+```{r}
+mouseBM <- readRDS("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/objects/Mouse_5TGM1_QC_IntegratedObject_Final.rds")
+DefaultAssay(mouseBM) <- "RNA"
+```
+########################################
+### Stromal Compartment Marker Genes ###
+########################################
+```{r}
+# Mesenchymal stem cells (MSCs)
+FeaturePlot(mouseBM, features = "Lepr")
+FeaturePlot(mouseBM, features = "Adipoq")
+FeaturePlot(mouseBM, features = "Cxcl12")
+
+# Osteo-lineage cells (OLCs)
+FeaturePlot(mouseBM, features = "Bglap")
+FeaturePlot(mouseBM, features = "Spp1")
+FeaturePlot(mouseBM, features = "Sp7")
+
+# Chondrocytes 
+FeaturePlot(mouseBM, features = "Col2a1")
+FeaturePlot(mouseBM, features = "Sox9")
+FeaturePlot(mouseBM, features = "Acan")
+
+# Pericytes
+FeaturePlot(mouseBM, features = "Acta2")
+FeaturePlot(mouseBM, features = "Myh11")
+FeaturePlot(mouseBM, features = "Mcam")
+
+# Endothelial Cells (BMECs)
+FeaturePlot(mouseBM, features = "Cdh5")
+FeaturePlot(mouseBM, features = "Kdr")
+FeaturePlot(mouseBM, features = "Emcn")
+
+# Fibroblasts
+FeaturePlot(mouseBM, features = "S100a4")
+FeaturePlot(mouseBM, features = "Fn1")
+FeaturePlot(mouseBM, features = "Dcn")
+```
+
+############################################
+### Non-Stromal Compartment Marker Genes ###
+############################################
+
+```{r}
+# B cells
+FeaturePlot(mouseBM, features = "Cd79a")
+
+# Hematopoietic Stem Cells
+FeaturePlot(mouseBM, features = "Elane")
+FeaturePlot(mouseBM, features = "Mpo")
+
+# Monocyte/macrophages
+FeaturePlot(mouseBM, features = "Ccl3")
+FeaturePlot(mouseBM, features = "Tyrobp")
+
+# Platelets
+FeaturePlot(mouseBM, features = "Ppbp")
+
+# RBCs
+FeaturePlot(mouseBM, features = "Hba-a1")
+
+# Neutrophil/GMPs
+FeaturePlot(mouseBM, features = "S100a9")
+FeaturePlot(mouseBM, features = "Ngp")
+
+# T cells (none found)
+FeaturePlot(mouseBM, features = "Cd4")
+FeaturePlot(mouseBM, features = "Nkg7")
+
+# Cycling cells
+FeaturePlot(mouseBM, features = "Car1")
+FeaturePlot(mouseBM, features = "Cdk6")
+FeaturePlot(mouseBM, features = "Slc25a21")
+
+# Plasma cells (none found)
+FeaturePlot(mouseBM, features = "Ly6k")
+FeaturePlot(mouseBM, features = "Slamf7")
+
+# Oligodendrocytes
+FeaturePlot(mouseBM, features = "Cdh19")
+FeaturePlot(mouseBM, features = "Plp1")
+```
+# Check out clusters on UMAP
+```{r}
+DimPlot(mouseBM, group.by = "seurat_clusters", label = T)
+```
+# Changing idents
+```{r}
+Idents(mouseBM) <- mouseBM@meta.data$seurat_clusters
+
+mouseBM <- RenameIdents(mouseBM, "0" = "B cells")
+mouseBM <- RenameIdents(mouseBM, "1" = "MoMacs")
+mouseBM <- RenameIdents(mouseBM, "2" = "Cycling")
+mouseBM <- RenameIdents(mouseBM, "3" = "B cells")
+mouseBM <- RenameIdents(mouseBM, "4" = "AEC")
+mouseBM <- RenameIdents(mouseBM, "5" = "Fibroblasts")
+mouseBM <- RenameIdents(mouseBM, "6" = "MSC")
+mouseBM <- RenameIdents(mouseBM, "7" = "Platelets")
+mouseBM <- RenameIdents(mouseBM, "8" = "SEC")
+mouseBM <- RenameIdents(mouseBM, "9" = "B cells")
+mouseBM <- RenameIdents(mouseBM, "10" = "Pericytes")
+mouseBM <- RenameIdents(mouseBM, "11" = "Cycling")
+mouseBM <- RenameIdents(mouseBM, "12" = "OLC")
+mouseBM <- RenameIdents(mouseBM, "13" = "MoMacs")
+mouseBM <- RenameIdents(mouseBM, "14" = "B cells")
+mouseBM <- RenameIdents(mouseBM, "15" = "B cells")
+mouseBM <- RenameIdents(mouseBM, "16" = "RBC")
+mouseBM <- RenameIdents(mouseBM, "17" = "Platelets")
+mouseBM <- RenameIdents(mouseBM, "18" = "Chondrocytes")
+mouseBM <- RenameIdents(mouseBM, "19" = "Oligodendrocytes")
+
+mouseBM@meta.data$celltypes <- Idents(mouseBM)
+DimPlot(mouseBM, group.by = "celltypes", label = T)
+```
+# Subsetting out stromals
+```{r}
+stromals <- subset(mouseBM, subset = celltypes %in% c("Chondrocytes", "OLC", "MSC", "AEC", "SEC", "Fibroblasts", "Pericytes"))
+```
+# Reclustering stromals
+```{r}
+stromals <- ScaleData(stromals)
+stromals <- FindVariableFeatures(stromals, nfeatures = 2000)
+stromals <- RunPCA(stromals, npcs = 25)
+ElbowPlot(
+  object = stromals, 
+  ndims = 25
+) +
+  geom_abline(
+    aes(intercept = 1.75, slope = 0, color = "red"),
+    show.legend = FALSE
+  )
+
+# Determine percent of variation associated with each PC
+pct <- stromals[["pca"]]@stdev / sum(stromals[["pca"]]@stdev) * 100
+cumu <- cumsum(pct) # Calculate cumulative percents for each PC
+
+# Determine which PC exhibits cumulative percent greater than 90% and % variation associated with the PC as less than 5
+co1 <- which(cumu > 90 & pct < 5)[1]
+# Determine the difference between variation of PC and subsequent PC
+co2 <- sort(which((pct[1:length(pct) - 1] - pct[2:length(pct)]) > 0.1), decreasing = T)[1] + 1
+
+if (co1 < co2) {
+  n_pc <- co1
+  print(paste0("the elbow PC is ", co1))
+} else {
+  n_pc <- 2
+  print(paste0("the elbow point is ", co2))
+}
+
+stromals <- FindNeighbors(stromals, dims = 1:21)
+stromals <- FindClusters(stromals, resolution = 0.12)
+stromals <- RunUMAP(stromals, dims = 1:21)
+
+DimPlot(stromals, label = T)
+DimPlot(stromals, group.by = "celltypes", label = T)
+```
+# Identifying B cell contam
+```{r}
+FeaturePlot(stromals, features = c("Cd79a"))
+```
+# Subsetting B cell contam and running final workflow
+```{r}
+stromals.subbed <- subset(stromals, subset = seurat_clusters %in% c("0", "1", "2", "3", "4", "5", "6", "9"))
+
+stromals.subbed <- ScaleData(stromals.subbed)
+stromals.subbed <- FindVariableFeatures(stromals.subbed, nfeatures = 2000)
+stromals.subbed <- RunPCA(stromals.subbed, npcs = 21)
+stromals.subbed <- FindNeighbors(stromals.subbed, dims = 1:21)
+stromals.subbed <- FindClusters(stromals.subbed, resolution = 0.12)
+stromals.subbed <- RunUMAP(stromals.subbed, dims = 1:21)
+
+DimPlot(stromals.subbed, label = T)
+DimPlot(stromals.subbed, group.by = "celltypes", label = T)
+table(stromals.subbed@meta.data$celltypes)
+```
+# Save out
+```{r}
+saveRDS(stromals.subbed, "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/objects/5TGM1_StromalsOnly_Annotated_21PCs_ContamRemoved_FinalObject.rds")
+```
+

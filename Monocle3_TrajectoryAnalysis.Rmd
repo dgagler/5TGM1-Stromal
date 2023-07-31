@@ -1,0 +1,224 @@
+---
+title: "Monocle3_TrajectoryAnalysis"
+output: html_document
+date: "2023-03-01"
+---
+
+# Load libraries
+```{r}
+library(Seurat)
+library(tidyverse)
+library(dplyr)
+library(monocle3)
+library(monocle)
+library(ggplot2)
+library(ggridges)
+library(SeuratWrappers)
+library(DESeq2)
+
+options(future.globals.maxSize=1000000000000000) # Set max global size so we don't run out of memory
+```
+# Load data
+```{r}
+stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/objects/Rerun_Mouse5TG_StromalsOnly_AnnotatedObject6_21PCs_NoLib_FIXEDLIBRARIES_6.rds")
+```
+# Subsetting to MSCs and ECs (because 2 diff trajectories)
+```{r}
+subtype <- subset(stromals, subset = celltypes_ECsubbed %in% c("MSCs", "OLCs"))
+```
+# standard Seurat workflow on each lineage
+```{r}
+# MSCs
+subtype <- ScaleData(subtype)
+subtype <- FindVariableFeatures(subtype, nfeatures = 2000)
+subtype <- RunPCA(subtype, npcs = 10)
+subtype <- FindNeighbors(subtype, dims = 1:10)
+subtype <- FindClusters(subtype, resolution = 0.2)
+subtype <- RunUMAP(subtype, dims = 1:10)
+
+subtype <- subset(subtype, subset = seurat_clusters %in% c("0", "1", "2", "3", "4", "5"))
+
+DimPlot(subtype)
+#ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/BMEC_bothConditions_UMAP2.png", height = 6, width = 8)
+
+DimPlot(subtype, group.by = "celltypes_ECsubbed")
+#ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCLineage_PreMonocle_UMAP.png", height = 6, width = 6)
+
+```
+# Convert Seurat to monocle object
+```{r}
+msc.cds <- as.cell_data_set(subtype)
+msc.cds <- estimate_size_factors(msc.cds)
+```
+# Check partitions
+```{r}
+plot_cells(msc.cds, show_trajectory_graph = FALSE, color_cells_by = "partition")
+```
+
+# Assign partitions
+```{r}
+# MSCs
+recreate.partitions <- c(rep(1, length(msc.cds@colData@rownames)))
+names(recreate.partitions) <- msc.cds@colData@rownames
+recreate.partitions <- as.factor(recreate.partitions)
+
+msc.cds@clusters@listData[["UMAP"]][["partitions"]] <- recreate.partitions
+```
+# Assign cluster information
+```{r}
+# MSCs 
+Idents(subtype) <- "seurat_clusters"
+list.cluster <- subtype@active.ident
+msc.cds@clusters@listData[["UMAP"]][["clusters"]] <- list.cluster
+```
+# Assign UMAP coords
+```{r}
+# MSCs
+msc.cds@int_colData@listData[["reducedDims"]]@listData[["UMAP"]] <- subtype@reductions$umap@cell.embeddings
+```
+# Learn trajectory
+```{r}
+# MSCs
+msc.cds <- learn_graph(msc.cds, use_partition = T)
+```
+# Plot with trajectory
+```{r}
+# MSCs
+plot_cells(msc.cds, color_cells_by = "cluster", label_groups_by_cluster = F,
+           label_branch_points = T, label_roots = T, label_leaves = F, 
+           group_label_size = 5) + facet_grid(. ~ case.control)
+#ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_Monocle_TrajectoryUMAP_ConditionSplit.png", height = 5, width = 8)
+```
+# Pseudotime
+```{r}
+# MSCs
+
+msc.cds <- order_cells(msc.cds)
+msc.cds <- order_cells(msc.cds, reduction_method = "UMAP", root_cells = colnames(msc.cds[, clusters(msc.cds) == "1"]))
+plot_cells(msc.cds, color_cells_by = "pseudotime", label_groups_by_cluster = F,
+           label_branch_points = F, label_roots = F, label_leaves = F) + facet_grid(. ~ case.control) 
+
+#ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_Monocle_TrajectoryUMAP_Pseudotime_ConditionSplit_Cluster1Root.png", height = 5, width = 8)
+```
+# Select branch
+```{r}
+branch <- choose_graph_segments(msc.cds)
+
+```
+
+# Finding roots programmatically
+```{r}
+get_earliest_principal_node <- function(cds, time_bin="2"){
+  cell_ids <- which(colData(cds)[, "seurat_clusters"] == time_bin)
+  
+  closest_vertex <-
+  cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
+  closest_vertex <- as.matrix(closest_vertex[colnames(cds), ])
+  root_pr_nodes <-
+  igraph::V(principal_graph(cds)[["UMAP"]])$name[as.numeric(names
+  (which.max(table(closest_vertex[cell_ids,]))))]
+  
+  root_pr_nodes
+}
+
+msc.cds <- order_cells(msc.cds, root_pr_nodes=get_earliest_principal_node(msc.cds))
+plot_cells(msc.cds, color_cells_by = "pseudotime", label_groups_by_cluster = F, label_cell_groups = F,
+           label_branch_points = F, label_roots = F, label_leaves = F) + facet_grid(. ~ case.control)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/BMECs_ONLY_Monocle_Pseudotime_ConditionSplit_ProgrammaticRootChoose.png", height = 5, width = 8)
+```
+# Fix gene name thing
+```{r}
+rowData(msc.cds)$gene_name <- rownames(msc.cds)
+rowData(msc.cds)$gene_short_name <- rowData(msc.cds)$gene_name
+```
+# Plot?
+```{r}
+"Lepr" %in% row.names(rowData(msc.cds))
+
+plot_cells(msc.cds, genes = c("Bglap", "Lpl", "Lepr", "Car3"),
+           label_cell_groups = F,
+           show_trajectory_graph = F,
+           min_expr = 3)
+```
+# Find genes by pseudotime
+```{r}
+cds_pt_res <- graph_test(msc.cds, neighbor_graph = "principal_graph", cores = 4)
+cds_pt_res_subset <- na.omit(cds_pt_res)
+cds_pt_res_subset <- cds_pt_res_subset[cds_pt_res_subset$p_value < 0.05 & cds_pt_res_subset$status == "OK",]
+```
+
+# Plot genes by pseudotime
+```{r}
+my_genes <- rownames(subset(fData(msc.cds), subset = gene_short_name %in% c("Lepr", "Lpl", "Bglap")))
+cds_subset <- msc.cds[my_genes,]
+
+plot_genes_in_pseudotime(msc.cds,
+                         min_expr = 0.25)
+```
+
+# Genes by pseudotime
+```{r}
+ciliated_genes <- c("Bglap",
+                    "Col1a1",
+                    "Sparc",
+                    "Bglap2",
+                    "Lepr",
+                    "Adipoq",
+                    "Lpl",
+                    "Cebpa")
+msc.cds_subset <- msc.cds[rownames(msc.cds) %in% ciliated_genes,]
+
+gene_fits <- fit_models(msc.cds_subset, model_formula_str = "~seurat_clusters")
+
+fit_coefs <- coefficient_table(gene_fits)
+
+cluster_time_terms <- fit_coefs %>% filter(term == "seurat_clusters")
+
+cluster_time_terms <- fit_coefs %>% filter (q_value < 0.05) %>%
+         select(gene_id, term, q_value, estimate)
+
+plot_genes_violin(msc.cds_subset, ncol=2) +
+      theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+
+# Cells ordered by pseudotime
+```{r}
+# MSCs
+msc.cds$monocle3_pseudotime <- pseudotime(msc.cds)
+msc.pseudotime.data <- as.data.frame(colData(msc.cds))
+ggplot(msc.pseudotime.data, aes(monocle3_pseudotime, reorder(seurat_clusters, monocle3_pseudotime), fill = seurat_clusters)) + geom_boxplot()
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCLineage_Monocle_Pseudotime_OrderedByClusters.png", height = 6, width = 6)
+
+# ECs
+ec.cds$monocle3_pseudotime <- pseudotime(ec.cds)
+ec.pseudotime.data <- as.data.frame(colData(ec.cds))
+ggplot(ec.pseudotime.data, aes(monocle3_pseudotime, reorder(seurat_clusters, monocle3_pseudotime), fill = seurat_clusters)) + geom_boxplot()
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/ECLineage_Monocle_Pseudotime_OrderedByClusters.png", height = 6, width = 6)
+```
+# Checking some genes
+```{r}
+# ECs
+FeaturePlot(ec.lineage, features = c("Lpl", "Atf3", "Socs3", "Timp4", "Ly6c1", "Vcam1"), ncol = 3)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/ECLineage_SomeSubcluster_Genes.png", height = 6, width = 9)
+
+# Fibroblasts
+FeaturePlot(subtype, features = c("Cytl1", "Chad", "Acan"), ncol = 3)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCLineage_FibroblastSubcluster_Genes.png", height = 6, width = 9)
+
+# MSCs
+FeaturePlot(subtype, features = c("Lepr", "Wif1", "Flt1", "Atf3", "Btg2", "Cd200r3"), ncol = 3)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCLineage_MSCSubcluster_Genes.png", height = 6, width = 9)
+
+# OLCs
+FeaturePlot(subtype, features = c("Bglap", "Col1a1", "Sparc", "Spp1", "Ogn", "Mmp13"), ncol = 3)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCLineage_OLCSubcluster_Genes.png", height = 6, width = 9)
+ 
+```
+
+# Genes that change as a function of pseudotime
+```{r}
+msc.deg <- graph_test(msc.cds, neighbor_graph = "principal_graph")
+msc.deg %>% arrange(q_value) %>% filter(status == "OK") %>% head()
+```
+

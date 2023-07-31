@@ -1,0 +1,903 @@
+---
+title: "5TG_Mouse_QC"
+output: html_document
+date: "2022-08-09"
+---
+
+# Load up libraries
+```{r}
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(ggridges)
+library(ggforce)
+library(cowplot)
+library(Matrix)
+
+options(future.globals.maxSize=1000000000000000)
+```
+# Read in data
+```{r}
+lib1.data <- Read10X('/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/raw_data/082322-1/filtered_feature_bc_matrix')
+lib2.data <- Read10X('/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/raw_data/082322-2/filtered_feature_bc_matrix')
+lib3.data <- Read10X('/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/raw_data/082322-3/filtered_feature_bc_matrix')
+lib5.data <- Read10X('/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/raw_data/090122-1/filtered_feature_bc_matrix')
+lib6.data <- Read10X('/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/raw_data/090122-2/filtered_feature_bc_matrix')
+lib4.data <- Read10X('/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/raw_data/sixth/filtered_feature_bc_matrix')
+```
+# Fixing lib4 hashtag names
+```{r}
+lib4.data$`Antibody Capture`@Dimnames[[1]][1:8] <- c("hashtag1", "hashtag2", "hashtag3", "hashtag4",
+                                                     "hashtag5", "hashtag6", "hashtag7", "hashtag8")
+```
+# Make Seurat object from GE assay
+```{r}
+lib1 <- CreateSeuratObject(counts = lib1.data$`Gene Expression`, min.cells=3, min.features=200)
+lib2 <- CreateSeuratObject(counts = lib2.data$`Gene Expression`, min.cells=3, min.features=200)
+lib3 <- CreateSeuratObject(counts = lib3.data$`Gene Expression`, min.cells=3, min.features=200)
+lib4 <- CreateSeuratObject(counts = lib4.data$`Gene Expression`, min.cells=3, min.features=200)
+lib5 <- CreateSeuratObject(counts = lib5.data$`Gene Expression`, min.cells=3, min.features=200)
+lib6 <- CreateSeuratObject(counts = lib6.data$`Gene Expression`, min.cells=3, min.features=200)
+```
+# Fixing mismatched matrix sizes due to cells lost from above filtering
+```{r}
+# Lib1
+lib1.diff <- setdiff(colnames(lib1.data$`Antibody Capture`), colnames(lib1)) # Getting the unmatched cell
+lib1.data$`Antibody Capture` <- lib1.data$`Antibody Capture`[, !colnames(lib1.data$`Antibody Capture`) %in% lib1.diff]
+# Lib2
+lib2.diff <- setdiff(colnames(lib2.data$`Antibody Capture`), colnames(lib2)) # Getting the unmatched cell
+lib2.data$`Antibody Capture` <- lib2.data$`Antibody Capture`[, !colnames(lib2.data$`Antibody Capture`) %in% lib2.diff]
+# Lib3
+lib3.diff <- setdiff(colnames(lib3.data$`Antibody Capture`), colnames(lib3)) # Getting the unmatched cell
+lib3.data$`Antibody Capture` <- lib3.data$`Antibody Capture`[, !colnames(lib3.data$`Antibody Capture`) %in% lib3.diff]
+# Lib4
+lib4.diff <- setdiff(colnames(lib4.data$`Antibody Capture`), colnames(lib4)) # Getting the unmatched cell
+lib4.data$`Antibody Capture` <- lib4.data$`Antibody Capture`[, !colnames(lib4.data$`Antibody Capture`) %in% lib4.diff]
+# Lib5
+lib5.diff <- setdiff(colnames(lib5.data$`Antibody Capture`), colnames(lib5)) # Getting the unmatched cell
+lib5.data$`Antibody Capture` <- lib5.data$`Antibody Capture`[, !colnames(lib5.data$`Antibody Capture`) %in% lib5.diff]
+# Lib6
+lib6.diff <- setdiff(colnames(lib6.data$`Antibody Capture`), colnames(lib6)) # Getting the unmatched cell
+lib6.data$`Antibody Capture` <- lib6.data$`Antibody Capture`[, !colnames(lib6.data$`Antibody Capture`) %in% lib6.diff]
+```
+# Create hashtag assay
+```{r}
+lib1[["HTO"]] <- CreateAssayObject(counts = lib1.data$`Antibody Capture` + 1, colnames = (x = lib1)) # needed to add 1 to make HTODemux() run
+lib2[["HTO"]] <- CreateAssayObject(counts = lib2.data$`Antibody Capture` + 1, colnames = (x = lib2))
+lib3[["HTO"]] <- CreateAssayObject(counts = lib3.data$`Antibody Capture` + 1, colnames = (x = lib3))
+lib4[["HTO"]] <- CreateAssayObject(counts = lib4.data$`Antibody Capture` + 1, colnames = (x = lib4))
+lib5[["HTO"]] <- CreateAssayObject(counts = lib5.data$`Antibody Capture` + 1, colnames = (x = lib5))
+lib6[["HTO"]] <- CreateAssayObject(counts = lib6.data$`Antibody Capture` + 1, colnames = (x = lib6))
+```
+# Add library info
+```{r}
+lib1[["library"]] <- "lib1"
+lib2[["library"]] <- "lib2"
+lib3[["library"]] <- "lib3"
+lib4[["library"]] <- "lib4"
+lib5[["library"]] <- "lib5"
+lib6[["library"]] <- "lib6"
+
+lib1[["case.control"]] <- "control"
+lib2[["case.control"]] <- "control"
+lib3[["case.control"]] <- "myeloma"
+lib4[["case.control"]] <- "myeloma"
+lib5[["case.control"]] <- "control"
+lib6[["case.control"]] <- "myeloma"
+```
+# Get %mito
+```{r}
+# Lib 1
+lib1[["percent.mt"]] <- PercentageFeatureSet(lib1, pattern="^mt-")
+# Lib 2
+lib2[["percent.mt"]] <- PercentageFeatureSet(lib2, pattern="^mt-")
+# Lib 3
+lib3[["percent.mt"]] <- PercentageFeatureSet(lib3, pattern="^mt-")
+# Lib 4
+lib4[["percent.mt"]] <- PercentageFeatureSet(lib4, pattern="^mt-")
+# Lib 5
+lib5[["percent.mt"]] <- PercentageFeatureSet(lib5, pattern="^mt-")
+# Lib 6
+lib6[["percent.mt"]] <- PercentageFeatureSet(lib6, pattern="^mt-")
+```
+# Visualize genes per cell
+```{r}
+genes.for.RidgePlot <- data.frame(lib = c(rep("Lib 1", length(lib1$nFeature_RNA)),
+                              rep("Lib 2", length(lib2$nFeature_RNA)),
+                              rep("Lib 3", length(lib3$nFeature_RNA)),
+                              rep("Lib 4", length(lib4$nFeature_RNA)),
+                              rep("Lib 5", length(lib5$nFeature_RNA)),
+                              rep("Lib 6", length(lib6$nFeature_RNA))),
+                              
+                              counts = c(lib1$nFeature_RNA,
+                                        lib2$nFeature_RNA,
+                                        lib3$nFeature_RNA,
+                                        lib4$nFeature_RNA,
+                                        lib5$nFeature_RNA,
+                                        lib6$nFeature_RNA)
+)
+
+genes.for.RidgePlot$lib <- factor(genes.for.RidgePlot$lib, levels = c("Lib 1", "Lib 2", "Lib 3", "Lib 4", "Lib 5", "Lib 6"), ordered = T)
+
+ggplot(data = genes.for.RidgePlot) +
+  geom_density_ridges2(aes(x = counts, y = lib, group = lib, fill = lib, alpha=0.8)) + 
+  labs(title = "Unique Genes per Cell",
+       x = "Count",
+       y = "Density") +
+  theme(plot.title = element_text(hjust = 0.7)) +
+  geom_vline(xintercept=500) +
+  scale_y_discrete(expand=c(0,0)) +
+  scale_x_continuous(limits = c(0,7000), expand = c(0.025,0)) +
+  theme_minimal() + theme(legend.position = "none")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/GenesPerCell_LibraryRidgePlot.png")
+```
+# Visualize transcripts per cell
+```{r}
+transcripts.for.RidgePlot <- data.frame(lib = c(rep("Lib 1", length(lib1$nCount_RNA)),
+                              rep("Lib 2", length(lib2$nCount_RNA)),
+                              rep("Lib 3", length(lib3$nCount_RNA)),
+                              rep("Lib 4", length(lib4$nCount_RNA)),
+                              rep("Lib 5", length(lib5$nCount_RNA)),
+                              rep("Lib 6", length(lib6$nCount_RNA))),
+                              
+                              counts = c(lib1$nCount_RNA,
+                                        lib2$nCount_RNA,
+                                        lib3$nCount_RNA,
+                                        lib4$nCount_RNA,
+                                        lib5$nCount_RNA,
+                                        lib6$nCount_RNA)
+)
+
+transcripts.for.RidgePlot$lib <- factor(transcripts.for.RidgePlot$lib, levels = c("Lib 1", "Lib 2", "Lib 3", "Lib 4", "Lib 5", "Lib 6"), ordered = T)
+
+ggplot(data = transcripts.for.RidgePlot) +
+  geom_density_ridges2(aes(x = counts, y = lib, group = lib, fill = lib, alpha=0.8)) + 
+  labs(title = "Unique Transcripts per Cell",
+       x = "Count",
+       y = "Density") +
+  theme(plot.title = element_text(hjust = 0.7)) +
+  geom_vline(xintercept=500) +
+  scale_y_discrete(expand=c(0,0)) +
+  scale_x_continuous(limits = c(0,15000), expand = c(0.025,0)) +
+  theme_minimal() + theme(legend.position = "none")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/TranscriptsPerCell_LibraryRidgePlot.png")
+```
+# % Mito ridges
+```{r}
+percmito.for.RidgePlot <- data.frame(lib = c(rep("Lib 1", length(lib1$percent.mt)),
+                              rep("Lib 2", length(lib2$percent.mt)),
+                              rep("Lib 3", length(lib3$percent.mt)),
+                              rep("Lib 4", length(lib4$percent.mt)),
+                              rep("Lib 5", length(lib5$percent.mt)),
+                              rep("Lib 6", length(lib6$percent.mt))),
+                              
+                              counts = c(lib1$percent.mt,
+                                        lib2$percent.mt,
+                                        lib3$percent.mt,
+                                        lib4$percent.mt,
+                                        lib5$percent.mt,
+                                        lib6$percent.mt)
+)
+
+percmito.for.RidgePlot$lib <- factor(percmito.for.RidgePlot$lib, levels = c("Lib 1", "Lib 2", "Lib 3", "Lib 4", "Lib 5", "Lib 6"), ordered = T)
+
+ggplot(data = percmito.for.RidgePlot) +
+  geom_density_ridges2(aes(x = counts, y = lib, group = lib, fill = lib, alpha=0.8)) + 
+  labs(title = "Mitochondrial Transcript % per Cell",
+       x = "Count",
+       y = "Density") +
+  theme(plot.title = element_text(hjust = 0.7)) +
+  geom_vline(xintercept=5) +
+  scale_y_discrete(expand=c(0,0)) +
+  scale_x_continuous(limits = c(0,10), expand = c(0.025,0)) +
+  theme_minimal() + theme(legend.position = "none")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/PercMito_LibraryRidgePlot.png")
+```
+# Normalizing and demultiplexing HTOs
+```{r}
+# Lib 1
+lib1 <- NormalizeData(object = lib1,
+                           assay = "HTO",
+                           normalization.method = "CLR")
+lib1 <- HTODemux(object = lib1,
+                      assay = "HTO",
+                      kfunc =  "kmeans",
+                      positive.quantile = 0.999)
+# Lib 2
+lib2 <- NormalizeData(object = lib2,
+                           assay = "HTO",
+                           normalization.method = "CLR")
+lib2 <- HTODemux(object = lib2,
+                      assay = "HTO",
+                      kfunc =  "kmeans",
+                      positive.quantile = 0.999)
+# Lib 3
+lib3 <- NormalizeData(object = lib3,
+                           assay = "HTO",
+                           normalization.method = "CLR")
+lib3 <- HTODemux(object = lib3,
+                      assay = "HTO",
+                      kfunc =  "kmeans",
+                      positive.quantile = 0.999)
+# Lib 4
+lib4 <- NormalizeData(object = lib4,
+                           assay = "HTO",
+                           normalization.method = "CLR")
+lib4 <- HTODemux(object = lib4,
+                      assay = "HTO",
+                      kfunc =  "kmeans",
+                      positive.quantile = 0.999)
+# Lib 5
+lib5 <- NormalizeData(object = lib5,
+                           assay = "HTO",
+                           normalization.method = "CLR")
+lib5 <- HTODemux(object = lib5,
+                      assay = "HTO",
+                      kfunc =  "kmeans",
+                      positive.quantile = 0.999)
+# Lib 6
+lib6 <- NormalizeData(object = lib6,
+                           assay = "HTO",
+                           normalization.method = "CLR")
+lib6 <- HTODemux(object = lib6,
+                      assay = "HTO",
+                      kfunc =  "kmeans",
+                      positive.quantile = 0.999)
+```
+# Hashtag heatmaps
+```{r}
+HTOHeatmap(lib1, assay = "HTO", ncells = 5000)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Library1_HTO_Heatmap.png", width = 5, height = 3)
+
+HTOHeatmap(lib2, assay = "HTO", ncells = 5000)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Library2_HTO_Heatmap.png", width = 5, height = 3)
+
+HTOHeatmap(lib3, assay = "HTO", ncells = 5000)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Library3_HTO_Heatmap.png", width = 5, height = 3)
+
+HTOHeatmap(lib4, assay = "HTO", ncells = 5000)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Library4_HTO_Heatmap.png", width = 5, height = 3)
+
+HTOHeatmap(lib5, assay = "HTO", ncells = 5000)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Library5_HTO_Heatmap.png", width = 5, height = 3)
+
+HTOHeatmap(lib6, assay = "HTO", ncells = 5000)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Library6_HTO_Heatmap.png", width = 5, height = 3)
+```
+# Hashtag pie charts - needs to be altered for each library. For some reason, the order of the classification outputs can be different between libraries. Make sure you are
+# properly identifying things as singlets, doublets, etc.
+```{r}
+table(lib5$HTO_classification.global)
+# Get values
+#lib5.doublets <- as.numeric(table(lib5$HTO_classification.global)[1])
+lib5.negatives <- as.numeric(table(lib5$HTO_classification.global)[1])
+lib5.singlets <- as.numeric(table(lib5$HTO_classification.global)[2])
+lib5.sum <- sum(table(lib5$HTO_classification.global))
+lib5.values <- c(1, lib5.negatives, lib5.singlets)
+
+
+# Get fracs
+#lib5.doublet.frac <- lib5.doublets/lib5.sum
+lib5.negative.frac <- lib5.negatives/lib5.sum
+lib5.singlet.frac <- lib5.singlets/lib5.sum
+lib5.fracs <- c(0.0001, lib5.negative.frac, lib5.singlet.frac)
+
+# Get labels
+#lib5.doublet.label <- paste(toString(round(lib5.doublet.frac, digits=2)*100), "%", sep="")
+lib5.negative.label <- paste(toString(round(lib5.negative.frac, digits=2)*100), "%", sep="")
+lib5.singlet.label <- paste(toString(round(lib5.singlet.frac, digits=2)*100), "%", sep="")
+lib5.labels <- c("0", lib5.negative.label, lib5.singlet.label)
+
+new.label <- c(0, 5649, 1411)
+# 
+# # Breakdown per hashtag 
+table(lib5$HTO_classification)
+
+lib5.pie <- data.frame(group=c("Doublet", "Negative", "Singlet"), value=lib5.values, #informed by HTO_classification.global table
+                       perc=lib5.fracs, labels=new.label)
+
+lib5.pie <- lib5.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(lib5.pie$value) *100) %>%
+  mutate(ypos = cumsum(prop)- 0.5*prop )
+
+ggplot(lib5.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = c(1, "white", "white"),
+            position = position_stack(vjust = 0.5),
+            show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) +
+  scale_fill_viridis_d() +
+  coord_polar(theta = "y") +
+  ggtitle("Library 6") +
+  theme_void()
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/lib5_SingletPie_Counts.png")
+```
+# Hashtag ridges
+```{r}
+RidgePlot(lib1, assay = "HTO", features = rownames(lib1[["HTO"]])[1:3], ncol = 3)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Lib1_HTO_RidgePlot.png", height = 4, width = 10)
+
+RidgePlot(lib2, assay = "HTO", features = rownames(lib2[["HTO"]])[1:3], ncol = 3)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Lib2_HTO_RidgePlot.png", height = 4, width = 10)
+
+RidgePlot(lib3, assay = "HTO", features = c("hashtag4", "hashtag5", "hashtag6", "hashtag8"), ncol = 4)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Lib3_HTO_RidgePlot.png", height = 4, width = 12)
+
+RidgePlot(lib4, assay = "HTO", features = c("hashtag4", "hashtag5", "hashtag6", "hashtag8"), ncol = 4)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Lib4_HTO_RidgePlot.png", height = 4, width = 12)
+
+RidgePlot(lib5, assay = "HTO", features = "hashtag7", ncol = 1)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Lib5_HTO_RidgePlot.png", height = 4, width = 4)
+
+RidgePlot(lib6, assay = "HTO", features = c("hashtag8"), ncol = 1)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Lib6_HTO_RidgePlot.png", height = 4, width = 4)
+```
+# Filtering out low quality cells
+# Library 4 removed because failed -- very few cells
+```{r}
+prefilter_total <- sum(length(colnames(lib1)), length(colnames(lib2)), length(colnames(lib3)), length(colnames(lib5)), length(colnames(lib6)))
+
+lib1 <- subset(x = lib1,
+                        subset = percent.mt < 5.00 & 
+                        nCount_RNA > 500 & nFeature_RNA > 500 &
+                        nCount_RNA < quantile(nCount_RNA, prob = 1 - 5/100) & 
+                        nFeature_RNA < quantile(nFeature_RNA, prob = 1 - 2/100)
+                        )
+lib2 <- subset(x = lib2,
+                        subset = percent.mt < 5.00 & 
+                        nCount_RNA > 500 & nFeature_RNA > 500 &
+                        nCount_RNA < quantile(nCount_RNA, prob = 1 - 5/100) & 
+                        nFeature_RNA < quantile(nFeature_RNA, prob = 1 - 2/100)
+                        )
+lib3 <- subset(x = lib3,
+                        subset = percent.mt < 5.00 & 
+                        nCount_RNA > 500 & nFeature_RNA > 500 &
+                        nCount_RNA < quantile(nCount_RNA, prob = 1 - 5/100) & 
+                        nFeature_RNA < quantile(nFeature_RNA, prob = 1 - 2/100)
+                        )
+#lib4 <- subset(x = lib4,
+#                        subset = percent.mt < 5.00 & 
+#                        nCount_RNA > 500 & nFeature_RNA > 500 &
+#                        nCount_RNA < quantile(nCount_RNA, prob = 1 - 5/100) & 
+#                        nFeature_RNA < quantile(nFeature_RNA, prob = 1 - 2/100)
+#                        )
+
+lib5 <- subset(x = lib5,
+                        subset = percent.mt < 5.00 & 
+                        nCount_RNA > 500 & nFeature_RNA > 500 &
+                        nCount_RNA < quantile(nCount_RNA, prob = 1 - 5/100) & 
+                        nFeature_RNA < quantile(nFeature_RNA, prob = 1 - 2/100)
+                        )
+
+lib6 <- subset(x = lib6,
+                        subset = percent.mt < 5.00 & 
+                        nCount_RNA > 500 & nFeature_RNA > 500 &
+                        nCount_RNA < quantile(nCount_RNA, prob = 1 - 5/100) & 
+                        nFeature_RNA < quantile(nFeature_RNA, prob = 1 - 2/100)
+                        )
+
+postfilter_total <- sum(length(colnames(lib1)), length(colnames(lib2)), length(colnames(lib3)), length(colnames(lib5)), length(colnames(lib6)))
+print(paste0("pre-filtering cell counts = ", prefilter_total))
+print(paste0("post-filtering cell counts = ", postfilter_total))
+print(paste0("fraction lost = ", 1 - postfilter_total/prefilter_total))
+```
+# Setting up libraries for integration
+```{r}
+lib.list <- c(lib1, lib2, lib3, lib5, lib6)
+
+# Normalize and find variable features for each lib
+lib.list <- lapply(X = lib.list, FUN = function(x) {
+    x <- NormalizeData(x) 
+    x <- FindVariableFeatures(x, selection.method = "vst", nfeatures = 2000)
+})
+
+# select features that are repeatedly variable across datasets for integration run PCA on each
+# dataset using these features
+features <- SelectIntegrationFeatures(object.list = lib.list)
+lib.list <- lapply(X = lib.list, FUN = function(x) {
+    x <- ScaleData(x, features = features, verbose = FALSE)
+    x <- RunPCA(x, features = features, verbose = FALSE)
+})
+```
+# Find anchors
+```{r}
+lib.anchors <- FindIntegrationAnchors(object.list = lib.list, anchor.features = features, reduction = "cca")
+```
+# Integrate data
+```{r}
+# this command creates an 'integrated' data assay
+lib.combined <- IntegrateData(anchorset = lib.anchors)
+```
+# Standard workflow time
+```{r}
+DefaultAssay(lib.combined) <- "integrated"
+
+lib.combined <- ScaleData(lib.combined)
+lib.combined <- RunPCA(lib.combined, npcs = 30)
+ElbowPlot(
+  object = lib.combined, 
+  ndims = 30
+) +
+  geom_abline(
+    aes(intercept = 1.75, slope = 0, color = "red"),
+    show.legend = FALSE
+  )
+lib.combined <- FindNeighbors(lib.combined, dims = 1:30)
+lib.combined <- FindClusters(lib.combined, resolution = 0.2)
+lib.combined <- RunUMAP(lib.combined, dims = 1:30)
+DimPlot(lib.combined, label = T, group.by = "integrated_snn_res.0.2")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/5TG_RawUMAP4.png", width = 8, height = 6)
+```
+# Save out object
+```{r}
+saveRDS(lib.combined, "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/objects/Mouse_5TGM1_QC_IntegratedObject_Final.rds")
+```
+################################################
+############# ANNOTATION SECTION ###############
+############# ENTER AT YOUR OWN RISK ###########
+################################################
+```{r}
+FeaturePlot(mouseBM, features = "Ptprc")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Ptprc_FeaturePlot4.png", height = 6, width = 6)
+```
+
+```{r}
+DefaultAssay(mouseBM) <- "RNA"
+
+
+# MSCs 
+FeaturePlot(mouseBM, features = "Lepr")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Lepr_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Adipoq")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Adipoq_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Cxcl12")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Cxcl12_FeaturePlot4.png", height = 6, width = 6)
+```
+
+```{r}
+# OLCs
+FeaturePlot(mouseBM, features = "Bglap")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Bglap_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Spp1")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Spp1_FeaturePlot4.png", height = 6, width = 6)
+```
+```{r}
+# Chondrocytes 
+FeaturePlot(mouseBM, features = "Col2a1")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Col2a1_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Acan")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Acan_FeaturePlot4.png", height = 6, width = 6)
+```
+
+```{r}
+# Pericytes
+FeaturePlot(mouseBM, features = "Acta2")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Acta2_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Myh11")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Myh11_FeaturePlot4.png", height = 6, width = 6)
+
+```
+
+```{r}
+# ECs
+FeaturePlot(mouseBM, features = "Cdh5")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Cdh5_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Kdr")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Kdr_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Emcn")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Emcn_FeaturePlot4.png", height = 6, width = 6)
+```
+
+```{r}
+# Fibros
+FeaturePlot(mouseBM, features = "S100a4")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/S100a4_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Fn1")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Fn1_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Dcn")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Dcn_FeaturePlot4.png", height = 6, width = 6)
+```
+
+```{r}
+# B cells
+FeaturePlot(mouseBM, features = "Cd79a")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Cd79a_FeaturePlot4.png", height = 6, width = 6)
+
+# HSCs
+FeaturePlot(mouseBM, features = "Elane")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Elane_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Mpo")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Mpo_FeaturePlot4.png", height = 6, width = 6)
+
+# MoMac
+FeaturePlot(mouseBM, features = "Ccl3")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Ccl3_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Tyrobp")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Tyrobp_FeaturePlot4.png", height = 6, width = 6)
+
+# Platelets
+FeaturePlot(mouseBM, features = "Ppbp")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Ppbp_FeaturePlot4.png", height = 6, width = 6)
+
+# RBCs
+FeaturePlot(mouseBM, features = "Hba-a1")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Hba-a1_FeaturePlot4.png", height = 6, width = 6)
+
+# Neutrophil/GMPs
+FeaturePlot(mouseBM, features = "S100a9")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/S100a9_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Ngp")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Ngp_FeaturePlot4.png", height = 6, width = 6)
+
+# No T cells
+FeaturePlot(mouseBM, features = "Cd4")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Cd4_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Nkg7")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Nk7_FeaturePlot4.png", height = 6, width = 6)
+
+# Cycling
+FeaturePlot(mouseBM, features = "Car1")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Car1_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Cdk6")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Cdk6_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Slc25a21")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Slc25a21_FeaturePlot4.png", height = 6, width = 6)
+
+# No PCs?
+FeaturePlot(mouseBM, features = "Ly6k")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Ly6k_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Slamf7")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Slamf7_FeaturePlot4.png", height = 6, width = 6)
+
+# No tumor cells?
+FeaturePlot(mouseBM, features = "Sdc1")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Sdc1_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Ighg2b")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Ighg2b_FeaturePlot4.png", height = 6, width = 6)
+
+# Oligodendrocytes
+FeaturePlot(mouseBM, features = "Cdh19")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Cdh19_FeaturePlot4.png", height = 6, width = 6)
+FeaturePlot(mouseBM, features = "Plp1")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Plp1_FeaturePlot4.png", height = 6, width = 6)
+
+table(mouseBM@meta.data$celltype)
+```
+
+```{r}
+cluster1.markers <- FindMarkers(mouseBM, ident.1 = 1, min.pct = 0.25, max.cells.per.ident = 1000)
+cluster1.markers <- cluster1.markers[cluster1.markers$p_val_adj < 0.05,]
+cluster1.markers[order(-cluster1.markers$avg_log2FC),]
+
+cluster2.markers <- FindMarkers(mouseBM, ident.1 = 2, min.pct = 0.25, max.cells.per.ident = 1000)
+cluster2.markers <- cluster2.markers[cluster2.markers$p_val_adj < 0.05,]
+cluster2.markers[order(-cluster2.markers$avg_log2FC),]
+
+cluster7.markers <- FindMarkers(mouseBM, ident.1 = 7, min.pct = 0.25, max.cells.per.ident = 1000)
+cluster7.markers <- cluster7.markers[cluster7.markers$p_val_adj < 0.05,]
+cluster7.markers[order(-cluster7.markers$avg_log2FC),]
+
+cluster13.markers <- FindMarkers(mouseBM, ident.1 = 13, min.pct = 0.25, max.cells.per.ident = 1000)
+cluster13.markers <- cluster13.markers[cluster13.markers$p_val_adj < 0.05,]
+cluster13.markers[order(-cluster13.markers$avg_log2FC),]
+
+cluster11.markers <- FindMarkers(mouseBM, ident.1 = 11, min.pct = 0.25, max.cells.per.ident = 1000)
+cluster11.markers <- cluster11.markers[cluster11.markers$p_val_adj < 0.05,]
+cluster11.markers[order(-cluster11.markers$avg_log2FC),]
+
+cluster14.markers <- FindMarkers(mouseBM, ident.1 = 14, min.pct = 0.25, max.cells.per.ident = 1000)
+cluster14.markers <- cluster14.markers[cluster14.markers$p_val_adj < 0.05,]
+cluster14.markers[order(-cluster14.markers$avg_log2FC),]
+
+cluster16.markers <- FindMarkers(mouseBM, ident.1 = 16, min.pct = 0.25, max.cells.per.ident = 1000)
+cluster16.markers <- cluster16.markers[cluster16.markers$p_val_adj < 0.05,]
+cluster16.markers[order(-cluster16.markers$avg_log2FC),]
+
+cluster18.markers <- FindMarkers(mouseBM, ident.1 = 18, min.pct = 0.25, max.cells.per.ident = 1000)
+cluster18.markers <- cluster18.markers[cluster18.markers$p_val_adj < 0.05,]
+cluster18.markers[order(-cluster18.markers$avg_log2FC),]
+```
+
+```{r}
+# Markers for each population as per Scadden et al.
+# MSC - c("Lepr", "Adipoq", "Cxcl12", "Kitl", "Grem1", "Vcam1")
+# OLC - c("Bglap", "Runx2", "Sp7", "Cd200", "Spp1", "Grem1", "Mmp13")
+# Chondro - c("Sox9", "Acan", "Col2a1", "Ihh", "Pth1r", "Mef2c")
+# Pericyte - c("Acta2", "Nes", "Cspg4", "Myh11", "Mcam")
+# EC - c("Pecam1", "Cdh5", "Cd34", "Kdr", "Emcn", "Flt4", "Ly6a")
+# Fibro - c("Fn1", "S100a4", "Dcn", "Sema3c", "Cd34", "Ly6a", "Pdgfra", 
+#           "Thy1", "Cd44" "Sox9", "Scx", "Spp1", "Nt5e", "Cspg4", "Cilp")
+
+```
+
+```{r}
+saveRDS(mouseBM, "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/5TG_Mouse_SeuratAnnotatedObject.rds")
+mouseBM.sce <- as.SingleCellExperiment(mouseBM)
+saveRDS(mouseBM.sce, "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/5TG_Mouse_SCEAnnotatedObject.rds")
+
+DimPlot(mouseBM, group.by = "seurat_clusters", label = T)
+```
+
+# Changing idents
+```{r}
+Idents(mouseBM) <- mouseBM[["seurat_clusters"]]
+
+mouseBM <- RenameIdents(mouseBM, "5" = "ECs")
+mouseBM <- RenameIdents(mouseBM, "9" = "ECs")
+mouseBM <- RenameIdents(mouseBM, "6" = "MSCs")
+mouseBM <- RenameIdents(mouseBM, "10" = "Pericytes")
+mouseBM <- RenameIdents(mouseBM, "12" = "OLCs")
+mouseBM <- RenameIdents(mouseBM, "4" = "Fibros (and a few chondros)")
+mouseBM <- RenameIdents(mouseBM, "18" = "Oligodendrocytes")
+
+mouseBM <- RenameIdents(mouseBM, "0" = "immune cells")
+mouseBM <- RenameIdents(mouseBM, "1" = "immune cells")
+mouseBM <- RenameIdents(mouseBM, "2" = "immune cells")
+mouseBM <- RenameIdents(mouseBM, "3" = "immune cells")
+mouseBM <- RenameIdents(mouseBM, "7" = "immune cells")
+mouseBM <- RenameIdents(mouseBM, "8" = "immune cells")
+mouseBM <- RenameIdents(mouseBM, "11" = "immune cells")
+mouseBM <- RenameIdents(mouseBM, "13" = "immune cells")
+mouseBM <- RenameIdents(mouseBM, "14" = "immune cells")
+mouseBM <- RenameIdents(mouseBM, "15" = "immune cells")
+mouseBM <- RenameIdents(mouseBM, "16" = "immune cells")
+mouseBM <- RenameIdents(mouseBM, "17" = "immune cells")
+
+mouseBM@meta.data$celltypes <- Idents(mouseBM)
+DimPlot(mouseBM, group.by = "celltypes")
+
+saveRDS(mouseBM, "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/Rerun_Mouse5TG_IntegratedObject4_Annotated.rds")
+```
+
+```{r}
+mouseBM@meta.data$cd45.status <- Idents(mouseBM)
+
+DimPlot(cd45.neg, group.by = "cd45.status", label = T)
+
+cd45.neg.lib1 <- subset(cd45.neg, subset = library == "lib1")
+cd45.neg.lib1 <- NormalizeData(object = cd45.neg.lib1,
+                           assay = "HTO",
+                           normalization.method = "CLR")
+cd45.neg.lib1 <- HTODemux(object = cd45.neg.lib1,
+                      assay = "HTO",
+                      kfunc =  "kmeans",
+                      positive.quantile = 0.99)
+
+cd45.neg.lib2 <- subset(cd45.neg, subset = library == "lib2")
+cd45.neg.lib2 <- NormalizeData(object = cd45.neg.lib2,
+                           assay = "HTO",
+                           normalization.method = "CLR")
+cd45.neg.lib2 <- HTODemux(object = cd45.neg.lib2,
+                      assay = "HTO",
+                      kfunc =  "kmeans",
+                      positive.quantile = 0.99)
+
+cd45.neg.lib3 <- subset(cd45.neg, subset = library == "lib3")
+cd45.neg.lib3 <- NormalizeData(object = cd45.neg.lib3,
+                           assay = "HTO",
+                           normalization.method = "CLR")
+cd45.neg.lib3 <- HTODemux(object = cd45.neg.lib3,
+                      assay = "HTO",
+                      kfunc =  "kmeans",
+                      positive.quantile = 0.99)
+
+cd45.neg.lib4 <- subset(cd45.neg, subset = library == "lib4")
+cd45.neg.lib4 <- NormalizeData(object = cd45.neg.lib4,
+                           assay = "HTO",
+                           normalization.method = "CLR")
+cd45.neg.lib4 <- HTODemux(object = cd45.neg.lib4,
+                      assay = "HTO",
+                      kfunc =  "kmeans",
+                      positive.quantile = 0.99)
+
+cd45.neg.lib5 <- subset(cd45.neg, subset = library == "lib5")
+cd45.neg.lib5 <- NormalizeData(object = cd45.neg.lib5,
+                           assay = "HTO",
+                           normalization.method = "CLR")
+cd45.neg.lib5 <- HTODemux(object = cd45.neg.lib5,
+                      assay = "HTO",
+                      kfunc =  "kmeans",
+                      positive.quantile = 0.99)
+
+table(cd45.neg.lib1@meta.data$HTO_classification.global)
+table(cd45.neg.lib2@meta.data$HTO_classification.global)
+table(cd45.neg.lib3@meta.data$HTO_classification.global)
+table(cd45.neg.lib4@meta.data$HTO_classification.global)
+table(cd45.neg.lib5@meta.data$HTO_classification.global)
+
+table(cd45.neg.lib1@meta.data$HTO_classification)
+table(cd45.neg.lib2@meta.data$HTO_classification)
+table(cd45.neg.lib3@meta.data$HTO_classification)
+table(cd45.neg.lib4@meta.data$HTO_classification)
+table(cd45.neg.lib5@meta.data$HTO_classification)
+
+cd45.neg.merged <- merge(cd45.neg.lib1, y = c(cd45.neg.lib2, cd45.neg.lib3, cd45.neg.lib4,
+                                              cd45.neg.lib5))
+table(cd45.neg.merged@meta.data$HTO_classification.global)
+cd45.neg.merged.singlets <- subset(cd45.neg.merged, subset = HTO_classification.global == "Singlet")
+table(cd45.neg.merged.singlets@meta.data$HTO_classification)
+
+
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/5TG_Annotated_UMAP_Cd45.png", width=8, height = 6)
+
+cd45.neg <- subset(mouseBM, subset = cd45.status == "cd45-")
+
+cd45.neg <- NormalizeData(object = cd45.neg,
+                           assay = "HTO",
+                           normalization.method = "CLR")
+cd45.neg <- HTODemux(object = cd45.neg,
+                      assay = "HTO",
+                      kfunc =  "kmeans",
+                      positive.quantile = 0.99)
+
+table(cd45.neg@meta.data$HTO_classification)
+
+table(cd45.neg.merged.singlets@meta.data$HTO_classification)
+DimPlot(cd45.neg.merged.singlets, dims = "umap", group.by = HTO_classification)
+
+cd45.neg.merged.singlets <- ScaleData(cd45.neg.merged.singlets)
+cd45.neg.merged.singlets <- FindVariableFeatures(cd45.neg.merged.singlets, selection.method = "vst")
+cd45.neg.merged.singlets <- RunPCA(cd45.neg.merged.singlets, npcs = 10)
+cd45.neg.merged.singlets <- FindNeighbors(cd45.neg.merged.singlets, dims = 1:10)
+
+cd45.neg.merged.singlets <- FindClusters(cd45.neg.merged.singlets, resolution = 0.2)
+cd45.neg.merged.singlets <- RunUMAP(cd45.neg.merged.singlets, dims = 1:10)
+
+DimPlot(cd45.neg.merged.singlets, label = T, order = FALSE, split.by = "HTO_classification")
+
+FeaturePlot(mouseBM, features = c("hashtag1", "hashtag2", "hashtag3", "hashtag4",
+                                  "hashtag5", "hashtag6", "hashtag7", "hashtag8"), order = T)  
+```
+
+```{r}
+hla.genes <- grep("^H2", genes, value = T)
+
+FeaturePlot(mouseBM, "H2afz")
+FeaturePlot(mouseBM, "H2-D1")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/FeaturePlot_H2-D1.png", width=8, height = 6)
+FeaturePlot(mouseBM, "H2-K1")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/FeaturePlot_H2-K1.png", width=8, height = 6)
+FeaturePlot(mouseBM, "H2-Ab1")
+FeaturePlot(mouseBM, "H2-Q1")
+FeaturePlot(mouseBM, "H2-M3")
+FeaturePlot(mouseBM, "H2-DMa")
+FeaturePlot(mouseBM, "H2afj")
+FeaturePlot(mouseBM, "H2afx")
+FeaturePlot(mouseBM, "H2afv")
+FeaturePlot(mouseBM, "H2afy2")
+FeaturePlot(mouseBM, "H2afy")
+FeaturePlot(mouseBM, "H2-Ke6")
+FeaturePlot(mouseBM, "H2-Oa")
+FeaturePlot(mouseBM, "H2-DMb2")
+FeaturePlot(mouseBM, "H2-DMb1")
+FeaturePlot(mouseBM, "H2-Ob")
+FeaturePlot(mouseBM, "H2-Ab1")
+FeaturePlot(mouseBM, "H2-Aa")
+FeaturePlot(mouseBM, "H2-Eb1")
+FeaturePlot(mouseBM, "H2-Eb2")
+FeaturePlot(mouseBM, "H2-Q2")
+FeaturePlot(mouseBM, "H2-Q4")
+FeaturePlot(mouseBM, "H2-Q6")
+FeaturePlot(mouseBM, "H2-Q7")
+FeaturePlot(mouseBM, "H2-Q10")
+FeaturePlot(mouseBM, "H2-T24")
+FeaturePlot(mouseBM, "H2-T23")
+FeaturePlot(mouseBM, "H2-T22")
+FeaturePlot(mouseBM, "H2-T3")
+FeaturePlot(mouseBM, "H2-M9")
+FeaturePlot(mouseBM, "H2-M5")
+FeaturePlot(mouseBM, "H2-M3")
+FeaturePlot(mouseBM, "H2al1m")
+FeaturePlot(mouseBM, "H2-M11")
+FeaturePlot(mouseBM, "H2-M2")
+```
+
+```{r}
+mouseBM <- RenameIdents(mouseBM, "MSCs" = "stromal")
+mouseBM <- RenameIdents(mouseBM, "OLCs" = "stromal")
+mouseBM <- RenameIdents(mouseBM, "Fibros (and a few chondros)" = "stromal")
+mouseBM <- RenameIdents(mouseBM, "Pericytes" = "stromal")
+mouseBM <- RenameIdents(mouseBM, "ECs" = "stromal")
+mouseBM <- RenameIdents(mouseBM, "B cells" = "immune")
+mouseBM <- RenameIdents(mouseBM, "HSCs" = "immune")
+mouseBM <- RenameIdents(mouseBM, "Cycling" = "immune")
+mouseBM <- RenameIdents(mouseBM, "RBCs" = "immune")
+mouseBM <- RenameIdents(mouseBM, "Platelets" = "immune")
+mouseBM <- RenameIdents(mouseBM, "MoMacs" = "immune")
+
+mouseBM@meta.data$big_groups <- Idents(mouseBM)
+
+table(mouseBM@meta.data$big_groups)
+```
+```{r}
+Idents(mouseBM) <- "HTO_classification"
+
+mouseBM <- RenameIdents(mouseBM, "hashtag1" = "Ctrl 1")
+mouseBM <- RenameIdents(mouseBM, "hashtag2" = "Ctrl 2")
+mouseBM <- RenameIdents(mouseBM, "hashtag3" = "Ctrl 3")
+mouseBM <- RenameIdents(mouseBM, "hashtag7" = "Ctrl 4")
+
+mouseBM <- RenameIdents(mouseBM, "hashtag4" = "Myeloma 1")
+mouseBM <- RenameIdents(mouseBM, "hashtag5" = "Myeloma 2")
+mouseBM <- RenameIdents(mouseBM, "hashtag6" = "Myeloma 3")
+mouseBM <- RenameIdents(mouseBM, "hashtag8" = "Myeloma 4")
+
+mouseBM@meta.data$patient <- Idents(mouseBM)
+table(mouseBM@meta.data$patient)
+
+Idents(mouseBM) <- "HTO_classification"
+mouseBM <- RenameIdents(mouseBM, "hashtag1" = "control")
+mouseBM <- RenameIdents(mouseBM, "hashtag2" = "control")
+mouseBM <- RenameIdents(mouseBM, "hashtag3" = "control")
+mouseBM <- RenameIdents(mouseBM, "hashtag7" = "control")
+
+mouseBM <- RenameIdents(mouseBM, "hashtag4" = "myeloma")
+mouseBM <- RenameIdents(mouseBM, "hashtag5" = "myeloma")
+mouseBM <- RenameIdents(mouseBM, "hashtag6" = "myeloma")
+mouseBM <- RenameIdents(mouseBM, "hashtag8" = "myeloma")
+
+mouseBM@meta.data$case.control <- Idents(mouseBM)
+
+```
+
+```{r}
+stromals <- subset(mouseBM, subset = big_groups == "stromal")
+
+p <- DimPlot(stromals)
+to.remove <- CellSelector(p)
+stromals <- stromals[,!colnames(stromals) %in% to.remove]
+
+
+DimPlot(stromals, group.by = "celltype", label = T)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/5TG_Annotated_UMAP_StromalOnly_CellType.png", width=8, height = 6)
+
+DimPlot(stromals, group.by = "patient")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/5TG_Annotated_UMAP_StromalOnly_Patients.png", width=8, height = 6)
+
+DimPlot(stromals, group.by = "case.control")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/5TG_Annotated_UMAP_StromalOnly_CaseControl.png", width=8, height = 6)
+
+```
+
+
+```{r}
+Idents(mouseBM) <- "SingleR.prunedlabels"
+Idents(mouseBM) <- "SingleR.PrunedCleaned"
+mouseBM[["SingleR.PrunedCleaned"]] <- mouseBM@meta.data$SingleR.prunedlabels 
+mouseBM <- RenameIdents(mouseBM, "Tgd" = "Lymphocytes")
+mouseBM <- RenameIdents(mouseBM, "T cells" = "Lymphocytes") 
+mouseBM <- RenameIdents(mouseBM, "Mast cells" = "Lymphocytes") 
+mouseBM <- RenameIdents(mouseBM, "ILC" = "Lymphocytes") 
+mouseBM <- RenameIdents(mouseBM, "NK cells" = "Lymphocytes") 
+mouseBM <- RenameIdents(mouseBM, "NKT" = "Lymphocytes") 
+
+mouseBM <- RenameIdents(mouseBM, "Epithelial cells" = "Epithelial/microglia/NA") 
+mouseBM <- RenameIdents(mouseBM, "Microglia" = "Epithelial/microglia/NA") 
+
+mouseBM <- RenameIdents(mouseBM, "Monocytes" = "Monos/macros") 
+mouseBM <- RenameIdents(mouseBM, "Macrophages" = "Monos/macros") 
+
+mouseBM.SingleR.subbed <- subset(mouseBM, idents = c("Monos/macros", "Epithelial/microglia/NA", "Lymphocytes", "B cells, pro", "B cells",
+                                                     "DC"), invert = T)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/SingleR_CleanedSubbed_AnnotatedUMAP.png")
+
+DimPlot(mouseBM.SingleR.subbed, label = T)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/SingleR_AnnotatedUMAP.png")
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

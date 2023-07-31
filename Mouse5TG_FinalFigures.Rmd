@@ -1,0 +1,1238 @@
+---
+title: "Mouse5TG_FinalFigures"
+output: html_document
+date: "2023-05-01"
+---
+
+# Load libraries
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(ggpubr)
+library(grid)
+library(gridExtra)
+library(patchwork)
+library(flextable)
+```
+# Load in stromal data
+```{r}
+stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/objects/Rerun_Mouse5TG_StromalsOnly_AnnotatedObject6_21PCs_NoLib_FIXEDLIBRARIES_6.rds")
+```
+# Subset celltype
+```{r}
+subtype <- subset(stromals, subset = celltypes_ECsubbed %in% c("Arterial ECs", "Sinusoidal ECs"))
+```
+# Standard workflow
+# Doing this because we want the most variable genes for the fibroblasts specifically, not for the entire dataset
+```{r}
+subtype <- ScaleData(subtype)
+subtype <- FindVariableFeatures(subtype, nfeatures = 2000)
+subtype <- RunPCA(subtype, npcs = 7)
+subtype <- FindNeighbors(subtype, dims = 1:7)
+subtype <- FindClusters(subtype, resolution = 0.15)
+subtype <- RunUMAP(subtype, dims = 1:7)
+DimPlot(subtype)
+
+#subtype <- subset(subtype, subset = seurat_clusters %in% c("0", "1", "2", "3", "4", "5"))
+DimPlot(subtype)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/BMEC_Subclustered_UMAP_ABL.png", height = 5, width = 5)
+```
+# Figure 3A
+```{r}
+# A - UMAP
+library(scales)
+show_col(hue_pal()(7))
+subtype <- stromals
+# Without cell count legend
+Idents(stromals) <- "celltypes_ECsubbed"
+figure.3a <- DimPlot(stromals, label = T,  cols = c("#F8766D", "#C49A00", "#53B400", "#00C094", "#00B6EB", "#A58AFF", "#FB61D7")) + NoLegend()
+#ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/StromalCells_UMAP.png", height = 6, width = 6)
+# With cell count legend
+DimPlot(stromals) + scale_color_manual(labels = c("Sinusoidal ECs (n = 1,881)", "Fibroblasts (n = 3,363)", "MSCs (n = 3,030)", "OLCs (n = 1,248)", "Pericytes (n = 1,615)",
+                                                  "Arterial ECs (n = 2,961)", "Chondrocytes (n = 121)"),
+                                       values = c("#F8766D", "#C49A00", "#53B400", "#00C094", "#00B6EB", "#A58AFF", "#FB61D7"))
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/StromalCells_UMAP_WithCellCounts.png", height = 6, width = 8)
+```
+Figure 3B - Relative Abundance of Stromal Pops
+```{r fig.height = 4, fig.width = 10}
+# B - Relative abundances
+#healthy <- subset(stromals, subset = case.control == "Healthy")
+#myeloma <- subset(stromals, subset = case.control == "Myeloma")
+
+healthy.da <- data.frame(table(healthy@meta.data$celltypes_ECsubbed)/sum(table(healthy@meta.data$celltypes_ECsubbed)))
+healthy.da$condition <- "Healthy"
+myeloma.da <- data.frame(table(myeloma@meta.data$celltypes_ECsubbed)/sum(table(myeloma@meta.data$celltypes_ECsubbed)))
+myeloma.da$condition <- "Myeloma"
+combined.da <- rbind(healthy.da, myeloma.da)
+
+library(reshape2)
+melted.da.df <- melt(combined.da, id.vars = c("Var1", "condition"))
+colnames(melted.da.df) <- c("Celltype", "Condition", "Balls", "RA")
+melted.da.df$Celltype <- factor(melted.da.df$Celltype)
+levels(melted.da.df$Celltype)
+melted.da.df$Celltype <- factor(melted.da.df$Celltype, levels = c("MSCs", "OLCs", "Fibroblasts", "Chondrocytes", "Arterial ECs", "Sinusoidal ECs", "Pericytes"))
+
+# Grouped bar
+figure.3b <- ggplot(melted.da.df, aes(fill = Condition, y = RA, x = Celltype)) + geom_bar(position = "dodge", stat = "identity") +
+  ylab("") + xlab("") + 
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  theme(axis.title.y = element_text(size = 15),
+        axis.text.x = element_text(size = 12)) +
+  scale_x_discrete(labels = c("MSCs", "OLCs", "Fibroblasts", "Chondrocytes", "AECs", "SECs", "Pericytes"))
+```
+Figure 3C - pseudosampled relative abundances
+# Create storage df
+```{r}
+storage.df <- data.frame(matrix(ncol = 9, nrow = 0))
+colnames(storage.df) <- c("cell.ID", "case.control", "MSCs", "OLCs", "Fibroblasts", "Chondrocytes", "Arterial ECs", "Sinusoidal ECs", "Pericytes")
+
+# Loop for subsampling where
+# seurat_obj = the object you are subsampling from
+# case.control = the string of the condition you will populate your output dataframe with
+# iterations = the number of subsamples to generate
+
+subsample_loop <- function(seurat_obj, case.control, iterations) {
+  
+  # Dataframe to store values
+  storage.df <- data.frame(matrix(ncol = 8, nrow = iterations))
+  colnames(storage.df) <- c("case.control", "MSCs", "OLCs", "Fibroblasts", "Chondrocytes", "AECs", "SECs", "Pericytes")
+  
+  # Random downsampling loop
+  for (k in 1:iterations) {
+    
+    # Do the subsampling without replacement to 50% of original size
+    subsample <- slice_sample(seurat_obj@meta.data, prop = 0.05) %>% select(celltypes_ECsubbed)
+    sum_cells <- ncol(healthy) # get total cell count
+    
+    # Storage for cell counts
+    msc.count <- 0
+    olc.count <- 0
+    fibroblast.count <- 0
+    chondrocyte.count <- 0
+    arterialEC.count <- 0
+    sinusoidalEC.count <- 0
+    pericyte.count <- 0
+  
+    # Looping through subsample to get cell counts
+    for (i in 1:nrow(subsample)) {
+      cell.type <- as.vector(subsample$celltypes_ECsubbed[i]) # Get cell type
+      
+      if (cell.type == "MSCs") {
+        msc.count <- msc.count + 1
+      } else if (cell.type == "OLCs") {
+        olc.count <- olc.count + 1
+      } else if (cell.type == "Fibroblasts") {
+        fibroblast.count <- fibroblast.count + 1
+      } else if (cell.type == "Chondrocytes") {
+        chondrocyte.count <- chondrocyte.count + 1
+      } else if (cell.type == "Arterial ECs") {
+        arterialEC.count <- arterialEC.count + 1
+      } else if (cell.type == "Sinusoidal ECs") {
+        sinusoidalEC.count <- sinusoidalEC.count + 1
+      } else if (cell.type == "Pericytes") {
+        pericyte.count <- pericyte.count + 1
+      }
+    } 
+    
+    # Add results to storage df
+    storage.df$case.control[k] <- case.control
+    storage.df$MSCs[k] <- msc.count/nrow(subsample)
+    storage.df$OLCs[k] <- olc.count/nrow(subsample)
+    storage.df$Fibroblasts[k] <- fibroblast.count/nrow(subsample)
+    storage.df$Chondrocytes[k] <- chondrocyte.count/nrow(subsample)
+    storage.df$aECs[k] <- arterialEC.count/nrow(subsample)
+    storage.df$sECs[k] <- sinusoidalEC.count/nrow(subsample)
+    storage.df$Pericytes[k] <- pericyte.count/nrow(subsample)
+  }
+  return(storage.df)
+}
+
+# Run the function
+set.seed(99)
+
+healthy.pseudosamples <- subsample_loop(healthy, "Healthy", 5)
+myeloma.pseudosamples <- subsample_loop(myeloma, "Myeloma", 5)
+```
+
+```{r fig.height = 3, fig.width = 10}
+# Combine dataframes
+combined.pseudosamples <- rbind(healthy.pseudosamples, myeloma.pseudosamples)
+
+# Set up dataframe for plotting
+pseudosamples.melt <- melt(combined.pseudosamples, id = c("case.control"))
+colnames(pseudosamples.melt)[2] <- "celltype"
+colnames(pseudosamples.melt)[1] <- "Condition"
+head(pseudosamples.melt)
+
+# Boxplot
+msc.box <- ggplot(pseudosamples.melt[pseudosamples.melt$celltype == "MSCs",], aes(x = celltype, y = value, fill = Condition)) + geom_boxplot() +
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.x=element_text(size=12)) + NoLegend()
+olc.box <- ggplot(pseudosamples.melt[pseudosamples.melt$celltype == "OLCs",], aes(x = celltype, y = value, fill = Condition)) + geom_boxplot() +
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.x=element_text(size=12)) + NoLegend()
+fibro.box <- ggplot(pseudosamples.melt[pseudosamples.melt$celltype == "Fibroblasts",], aes(x = celltype, y = value, fill = Condition)) + geom_boxplot() +
+  theme_minimal() +
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.x=element_text(size=12)) + NoLegend()
+chondro.box <- ggplot(pseudosamples.melt[pseudosamples.melt$celltype == "Chondrocytes",], aes(x = celltype, y = value, fill = Condition)) + geom_boxplot() +
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.x=element_text(size=12)) + NoLegend()
+aEC.box <- ggplot(pseudosamples.melt[pseudosamples.melt$celltype == "aECs",], aes(x = celltype, y = value, fill = Condition)) + geom_boxplot() +
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.x=element_text(size=12)) + NoLegend()
+sEC.box <- ggplot(pseudosamples.melt[pseudosamples.melt$celltype == "sECs",], aes(x = celltype, y = value, fill = Condition)) + geom_boxplot() +
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.x=element_text(size=12)) + NoLegend()
+peri.box <- ggplot(pseudosamples.melt[pseudosamples.melt$celltype == "Pericytes",], aes(x = celltype, y = value, fill = Condition)) + geom_boxplot() +
+  theme_minimal() +
+  theme(axis.title.x=element_blank(),
+        axis.title.y=element_blank(),
+        axis.text.x=element_text(size=12)) + NoLegend()
+
+# Patchwork trying
+figure.3c <- msc.box + olc.box + fibro.box + chondro.box + aEC.box + sEC.box + peri.box + plot_layout(ncol = 7, guides = "collect")
+gt <- patchwork::patchworkGrob(pseudo.boxplots)
+gt.fixed <- gridExtra::grid.arrange(gt, left = "Relative Abundance", bottom = "Cell Type")
+#ggsave(plot = gt.fixed, filename = "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/CellTypeRelativeAbundance_Boxplot_Condition_Pseudosampled_05PercDownSample.png", width = 12, height = 3)
+```
+# Supplementary Figure 3D and E - Violin and Feature Plots of Main Marker Genes
+```{r}
+# D - Violin Plots
+library(cowplot)
+p1 <- VlnPlot(stromals, features = c("Lepr")) + theme(axis.text.x = element_blank(), axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank()) + NoLegend()
+p2 <- VlnPlot(stromals, features = c("Bglap")) + theme(axis.text.x = element_blank(), axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank()) + NoLegend()
+p3 <- VlnPlot(stromals, features = c("Fn1")) + theme(axis.text.x = element_blank(), axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank()) + NoLegend()
+p4 <- VlnPlot(stromals, features = c("Sox9")) + theme(axis.text.x = element_blank(), axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank()) + NoLegend()
+p5 <- VlnPlot(stromals, features = c("Acta2")) + theme(axis.text.x = element_blank(), axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank()) + NoLegend()
+p6 <- VlnPlot(stromals, features = c("Cdh5")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank()) + NoLegend()
+#cowplot::plot_grid(p1, p2, p3, p4, p5, p6,
+#                   nrow = 6,
+#                   labels = "auto")
+
+figure.3d <- p1 | p2 | p3 | p4 | p5 | p6
+figure.3d <- p1 / p2 / p3 / p4 / p5 / p6
+#ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/StromalMarkerGene_VlnPlots_Tall.png", height = 18, width = 4)
+
+# E - Feature Plots
+p1.ft <- FeaturePlot(stromals, features = c("Lepr")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank()) + NoLegend()
+p2.ft <- FeaturePlot(stromals, features = c("Bglap")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank()) + NoLegend()
+p3.ft <- FeaturePlot(stromals, features = c("Fn1")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank()) + NoLegend()
+p4.ft <- FeaturePlot(stromals, features = c("Sox9")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank()) + NoLegend()
+p5.ft <- FeaturePlot(stromals, features = c("Acta2")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank()) + NoLegend()
+p6.ft <- FeaturePlot(stromals, features = c("Cdh5")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank()) + NoLegend()
+#cowplot::plot_grid(p1.ft, p2.ft, p3.ft, p4.ft, p5.ft, p6.ft,
+#                   nrow = 6,
+#                   labels = "auto")
+
+figure.3e <- p1.ft | p2.ft | p3.ft | p4.ft | p5.ft | p6.ft  
+figure.3e <- (p1.ft | p2.ft | p3.ft) / (p4.ft | p5.ft | p6.ft)  
+
+#ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/StromalMarkerGene_FeaturePlots_Tall.png", height = 18, width = 4)
+```
+# Figure 3 Patchwork
+```{r fig.height = 13, fig.width = 22}
+layout <- "
+AAABBBB
+AAABBBB
+AAABBBB
+CCCC###
+CCCC###
+CCCC###
+"
+
+figure.3a + patchwork.pie + figure.3e +
+  plot_layout(design = layout)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/Figure3.png", height = 6, width = 10)
+```
+# Figure 3 GSEA Table
+```{r}
+fig3.genesets <- c("Interferon Gamma Response", "Interferon Alpha Response", "Oxidative Phosphorylation", "MYC Targets")
+fig3.nes <- c("1.51", "1.47", "1.43", "1.41")
+fig3.fdrqval <- c("0.000", "0.005", "0.013", "0.023")
+fig3.df <- data.frame(fig3.genesets, fig3.nes, fig3.fdrqval)
+colnames(fig3.df) <- c("Gene Set", "NES", "FDR q-val")
+
+flextable(fig3.df) |>
+  autofit()
+```
+# Figure 4 - MSC/OLCs
+```{r}
+# A = Complex heatmap
+# B = Condition Split UMAP
+# C = Condition Split Pseudotime
+# D = Feature plots of Differentiation genes = Lepr, Lpl, Adipoq, Wif1, Spp1 (Opn), Bglap
+# E = Violin plots of differentiation genes
+```
+# Figure 4A - MSC/OLC Subcluster Heatmap
+```{r}
+# Copy and pasted from ComplexHeatmap markdown. Assumes all preprocessing + analysis is complete
+heatmap <- Heatmap(matrix.roworder.subset, cluster_rows = F, cluster_columns = TRUE,
+        row_order = output_gene_order_sub,
+        show_column_dend = F,
+        col = col_fun,
+        column_names_gp = gpar(fontsize = 0), row_names_gp = gpar(fontsize = 4.5),
+        clustering_distance_columns = "euclidean", clustering_method_columns = "average",
+        column_dend_height = unit(40,"mm"), row_dend_width = unit(40, "mm"),
+        top_annotation = annotation,
+        heatmap_legend_param = list(title = "Scaled Expression")
+        )
+library(tidyHeatmap)
+```
+# Figure 4B - MSC/OLC Condition Split UMAP
+```{r}
+figure.4b <- DimPlot(subtype, split.by = "case.control", cols = c("#F8766D", "#B79F00", "#00BA38", "#00BFC4", "#619CFF", "#F564E3"))
+```
+# Figure 4C - MSC/OLC Condition Split Pseudotime UMAP
+```{r}
+# Copy and pasted from TrajectoryAnalysis markdown. Assumes all preprocessing + analysis is complete
+get_earliest_principal_node <- function(cds, time_bin="1"){
+  cell_ids <- which(colData(cds)[, "seurat_clusters"] == time_bin)
+  
+  closest_vertex <-
+  cds@principal_graph_aux[["UMAP"]]$pr_graph_cell_proj_closest_vertex
+  closest_vertex <- as.matrix(closest_vertex[colnames(cds), ])
+  root_pr_nodes <-
+  igraph::V(principal_graph(cds)[["UMAP"]])$name[as.numeric(names
+  (which.max(table(closest_vertex[cell_ids,]))))]
+  
+  root_pr_nodes
+}
+
+msc.cds <- order_cells(msc.cds, root_pr_nodes=get_earliest_principal_node(msc.cds))
+figure.4c <- plot_cells(msc.cds, color_cells_by = "pseudotime", label_groups_by_cluster = F, label_cell_groups = F,
+           label_branch_points = F, label_roots = F, label_leaves = F) + facet_grid(. ~ case.control)
+#ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_ONLY_Monocle_Pseudotime_ConditionSplit_ProgrammaticRootChoose.png", height = 5, width = 8)
+```
+# Figure 4D - MSC/OLC Feature plots
+```{r}
+lepr.ft <- FeaturePlot(subtype, features = c("Lepr")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + NoLegend()
+lpl.ft <- FeaturePlot(subtype, features = c("Lpl")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + NoLegend()
+adipoq.ft <- FeaturePlot(subtype, features = c("Adipoq")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + NoLegend()
+wif1.ft <- FeaturePlot(subtype, features = c("Wif1")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + NoLegend()
+opn.ft <- FeaturePlot(subtype, features = c("Spp1")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + labs(title = "Spp1 (Opn)") + NoLegend()
+bglap.ft <- FeaturePlot(subtype, features = c("Bglap")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + NoLegend()
+### Currently adapted for ABL presentation structure !!! ###
+figure.4d <- (lepr.ft | lpl.ft | adipoq.ft | wif1.ft | opn.ft | bglap.ft)
+figure.4d
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/MSCOLC_ClusterAssignment_FeaturePlotsHorizontal.png", width = 15, height = 3)
+```
+# Figure 4E - Violin plots
+```{r}
+lepr.vln <- VlnPlot(subtype, features = c("Lepr")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + NoLegend()
+lpl.vln <- VlnPlot(subtype, features = c("Lpl")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                          plot.title = element_text(size=12)) + NoLegend()
+adipoq.vln <- VlnPlot(subtype, features = c("Adipoq")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                              plot.title = element_text(size=12)) + NoLegend()
+wif1.vln <- VlnPlot(subtype, features = c("Wif1")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                            plot.title = element_text(size=12)) + NoLegend()
+opn.vln <- VlnPlot(subtype, features = c("Spp1")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + labs(title = "Spp1 (Opn)") + NoLegend()
+bglap.vln <- VlnPlot(subtype, features = c("Bglap")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                              plot.title = element_text(size=12)) + NoLegend()
+
+figure.4e <- (lepr.vln | lpl.vln | adipoq.vln | wif1.vln | opn.vln | bglap.vln)
+figure.4e
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/MSCOLC_ClusterAssignment_VlnPlotsHorizontal.png", width = 15, height = 3)
+```
+# Figure 4 Patchwork
+```{r fig.height = 10, fig.width = 12.5}
+layout <- "
+  AAAACD
+  AAAACD
+  AAAACD
+  BBBBCD
+  BBBBCD
+  BBBBCD
+  ####CD
+  ####CD
+  ####CD
+"
+
+panel <- figure.4b + figure.4c + figure.4d + figure.4e +
+  plot_layout(design = layout)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/Figure4_noHeatmapEEE.png", height = 11, width = 11)
+```
+# Figure 5 - BMECs
+```{r}
+# A = Complex heatmap
+# B = Condition Split UMAP
+# C = Condition Split Pseudotime
+# D = Feature plots of Differentiation genes = Lepr, Lpl, Adipoq, Wif1, Spp1 (Opn), Bglap
+# E = Violin plots of differentiation genes
+```
+# Figure 5B - BMEC UMAP
+```{r}
+figure.5b <- DimPlot(subtype, split.by = "case.control", cols = c("#F8766D", "#B79F00", "#00BA38", "#00BFC4", "#619CFF", "#F564E3"))
+```
+# Figure 5C - BMEC Pseudotime UMAP
+```{r}
+# Ran prelim code in the TrajectoryAnalysis markdown
+msc.cds <- order_cells(msc.cds, root_pr_nodes=get_earliest_principal_node(msc.cds))
+figure.5c <- plot_cells(msc.cds, color_cells_by = "pseudotime", label_groups_by_cluster = F, label_cell_groups = F,
+           label_branch_points = F, label_roots = F, label_leaves = F) + facet_grid(. ~ case.control)
+```
+# Figure 5D - Feature plots
+```{r}
+sca1.ft <- FeaturePlot(subtype, features = c("Ly6a")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + labs(title = "Ly6a (Sca1)") + NoLegend()
+cxcl12.ft <- FeaturePlot(subtype, features = c("Cxcl12")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + NoLegend()
+vegfr4.ft <- FeaturePlot(subtype, features = c("Flt4")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + labs(title = "Flt4 (Vegfr-4)") + NoLegend()
+il6st.ft <- FeaturePlot(subtype, features = c("Il6st")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + NoLegend()
+
+figure.5d <- sca1.ft | cxcl12.ft | vegfr4.ft | il6st.ft 
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/BMEC_FeaturePlots_ABL.png", height = 3, width = 12)
+
+DimPlot(subtype)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/BMEC_UMAP_ABL.png", height = 5, width = 5)
+
+```
+# Figure 5E - Violin plots
+```{r}
+sca1.vln <- VlnPlot(subtype, features = c("Ly6a")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + labs(title = "Ly6a (Sca1)") + NoLegend()
+cxcl12.vln <- VlnPlot(subtype, features = c("Cxcl12")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + NoLegend()
+vegfr4.vln <- VlnPlot(subtype, features = c("Flt4")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + labs(title = "Flt4 (Vegfr-4)") + NoLegend()
+il6st.vln <- VlnPlot(subtype, features = c("Il6st")) + theme(axis.title.x = element_blank(),
+                                                             axis.title.y = element_blank(),
+                                                           plot.title = element_text(size=12)) + NoLegend()
+
+figure.5e <- sca1.vln | cxcl12.vln | vegfr4.vln | il6st.vln 
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/BMEC_ViolinPlots_ABL.png", height = 3, width = 12)
+```
+# Figure 5 Patchwork
+```{r fig.height = 5.6, fig.width = 10}
+layout <- "
+  AAAACD
+  AAAACD
+  AAAACD
+  BBBBCD
+  BBBBCD
+  BBBBCD
+"
+
+# layout <- "
+#   AAAAAABBBBBB
+#   AAAAAABBBBBB
+#   AAAAAABBBBBB
+#   ######CCCCCC
+#   ######DDDDDD
+# "
+
+figure.5b + figure.5c + figure.5d + figure.5e +
+  plot_layout(design = layout)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/Figure5_noHeatmap.png", height = 7.5, width = 10)
+```
+#
+```{r fig.height = 8, fig.width = 12.5}
+Heatmap(matrix.roworder.subset, cluster_rows = F, cluster_columns = TRUE,
+        row_order = output_gene_order_sub,
+        show_column_dend = F,
+        col = col_fun,
+        column_names_gp = gpar(fontsize = 0), row_names_gp = gpar(fontsize = 4.5),
+        clustering_distance_columns = "euclidean", clustering_method_columns = "average",
+        column_dend_height = unit(40,"mm"), row_dend_width = unit(40, "mm"),
+        top_annotation = annotation,
+        heatmap_legend_param = list(title = "Scaled Expression")
+        )
+```
+
+```{r}
+# D - Violin Plots
+library(cowplot)
+p1 <- VlnPlot(stromals, features = c("Lepr")) + theme(axis.text.x = element_blank(), axis.title.x = element_blank()) + NoLegend()
+p2 <- VlnPlot(stromals, features = c("Bglap")) + theme(axis.text.x = element_blank(), axis.title.x = element_blank()) + NoLegend()
+p3 <- VlnPlot(stromals, features = c("Fn1")) + theme(axis.text.x = element_blank(), axis.title.x = element_blank()) + NoLegend()
+p4 <- VlnPlot(stromals, features = c("Sox9")) + theme(axis.text.x = element_blank(), axis.title.x = element_blank()) + NoLegend()
+p5 <- VlnPlot(stromals, features = c("Acta2")) + theme(axis.text.x = element_blank(), axis.title.x = element_blank()) + NoLegend()
+p6 <- VlnPlot(stromals, features = c("Cdh5")) + theme(axis.title.x = element_blank())+ NoLegend()
+cowplot::plot_grid(p1, p2, p3, p4, p5, p6,
+                   nrow = 6,
+                   labels = "auto")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/StromalMarkerGene_VlnPlots_Tall.png", height = 18, width = 4)
+
+# E - Feature Plots
+p1.ft <- FeaturePlot(stromals, features = c("Lepr")) + theme(axis.title.x = element_blank()) + NoLegend()
+p2.ft <- FeaturePlot(stromals, features = c("Bglap")) + theme(axis.title.x = element_blank()) + NoLegend()
+p3.ft <- FeaturePlot(stromals, features = c("Fn1")) + theme(axis.title.x = element_blank()) + NoLegend()
+p4.ft <- FeaturePlot(stromals, features = c("Sox9")) + theme(axis.title.x = element_blank()) + NoLegend()
+p5.ft <- FeaturePlot(stromals, features = c("Acta2")) + theme(axis.title.x = element_blank()) + NoLegend()
+p6.ft <- FeaturePlot(stromals, features = c("Cdh5")) + NoLegend()
+cowplot::plot_grid(p1.ft, p2.ft, p3.ft, p4.ft, p5.ft, p6.ft,
+                   nrow = 6,
+                   labels = "auto")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/StromalMarkerGene_FeaturePlots_Tall.png", height = 18, width = 4)
+
+VlnPlot(stromals, features = c("Lepr", "Bglap", "Fn1", "Sox9", "Acta2", "Cdh5"), ncol = 1)
+
+```
+# Marker Genes of Main Stromal Populations - Supplementary Figure 3A Violin Plots
+```{r}
+Idents(stromals) <- "celltypes_ECsubbed"
+stromals <- RenameIdents(stromals, "Sinusoidal ECs" = "SECs")
+stromals <- RenameIdents(stromals, "Arterial ECs" = "AECs")
+stromals@meta.data$celltypes_ECsubbed2 <- Idents(stromals)
+Idents(stromals) <- "celltypes_ECsubbed2"
+# MSCs
+msc.markers1 <- VlnPlot(stromals, features = c("Lepr")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20), axis.text.x = element_blank()) + ylab("MSCs") + NoLegend()
+msc.markers2 <- VlnPlot(stromals, features = c("Adipoq")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_blank()) + NoLegend()
+msc.markers3 <- VlnPlot(stromals, features = c("Cxcl12")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_blank()) + NoLegend()
+
+# OLCs
+olc.markers1 <- VlnPlot(stromals, features = c("Bglap")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20), axis.text.x = element_blank()) + ylab("OLCs") + NoLegend()
+olc.markers2 <- VlnPlot(stromals, features = c("Spp1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_blank(), plot.title = element_text(hjust = 0.5)) + labs(title = "Spp1 (Opn)") + NoLegend()
+olc.markers3 <- VlnPlot(stromals, features = c("Sp7")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_blank()) + NoLegend()
+
+# Fibroblasts
+fibro.markers1 <- VlnPlot(stromals, features = c("S100a4")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20), axis.text.x = element_blank()) + ylab("Fibroblasts") + NoLegend()
+fibro.markers2 <- VlnPlot(stromals, features = c("Fn1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_blank()) + NoLegend()
+fibro.markers3 <- VlnPlot(stromals, features = c("Dcn")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_blank()) + NoLegend()
+
+# Chondrocytes
+chondro.markers1 <- VlnPlot(stromals, features = c("Col2a1")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20), axis.text.x = element_blank()) + ylab("Chondrocytes") + NoLegend()
+chondro.markers2 <- VlnPlot(stromals, features = c("Sox9")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_blank()) + NoLegend()
+chondro.markers3 <- VlnPlot(stromals, features = c("Acan")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_blank()) + NoLegend()
+
+# Pericytes
+peri.markers1 <- VlnPlot(stromals, features = c("Acta2")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20), axis.text.x = element_blank()) + ylab("Pericytes") + NoLegend()
+peri.markers2 <- VlnPlot(stromals, features = c("Myh11")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_blank()) + NoLegend()
+peri.markers3 <- VlnPlot(stromals, features = c("Mcam")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_blank()) + NoLegend()
+
+# ECs
+ec.markers1 <- VlnPlot(stromals, features = c("Cdh5")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("ECs") + NoLegend()
+ec.markers2 <- VlnPlot(stromals, features = c("Cd34")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+ec.markers3 <- VlnPlot(stromals, features = c("Pecam1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+supp3.patchwork <- (msc.markers1 | msc.markers2 | msc.markers3) /
+  (olc.markers1 | olc.markers2 | olc.markers3) /
+  (fibro.markers1 | fibro.markers2 | fibro.markers3) /
+  (chondro.markers1 | chondro.markers2 | chondro.markers3) /
+  (peri.markers1 | peri.markers2 | peri.markers3) /
+  (ec.markers1 | ec.markers2 | ec.markers3) + theme(plot.tag = element_text(size = 10))
+
+gt <- patchwork::patchworkGrob(supp3.patchwork)
+pdf("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MainStromalPopulations_MarkerGene_VlnPlots_SupplementaryFigure3.pdf", width = 15, height = 18)
+gridExtra::grid.arrange(gt, left = textGrob("Scaled Expression", gp=gpar(fontsize=24), rot = 90), bottom = textGrob("Subcluster", gp=gpar(fontsize=24)))
+dev.off()
+```
+# Supplementary Figure 4 - Main Stromal Marker Gene Feature Plots
+```{r}
+# MSCs
+msc.markers1 <- FeaturePlot(stromals, features = c("Lepr")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("MSCs")+ NoLegend()
+msc.markers2 <- FeaturePlot(stromals, features = c("Adipoq")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+msc.markers3 <- FeaturePlot(stromals, features = c("Cxcl12")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+# OLCs
+olc.markers1 <- FeaturePlot(stromals, features = c("Bglap")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("MSCs")  + NoLegend()
+olc.markers2 <- FeaturePlot(stromals, features = c("Spp1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), plot.title = element_text(hjust = 0.5)) + labs(title = "Spp1 (Opn)") + NoLegend()
+olc.markers3 <- FeaturePlot(stromals, features = c("Sp7")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+# Fibroblasts
+fibro.markers1 <- FeaturePlot(stromals, features = c("S100a4")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("MSCs")  + NoLegend()
+fibro.markers2 <- FeaturePlot(stromals, features = c("Fn1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+fibro.markers3 <- FeaturePlot(stromals, features = c("Dcn")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+# Chondrocytes
+chondro.markers1 <- FeaturePlot(stromals, features = c("Col2a1")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("MSCs")  + NoLegend()
+chondro.markers2 <- FeaturePlot(stromals, features = c("Sox9")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+chondro.markers3 <- FeaturePlot(stromals, features = c("Acan")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+# Pericytes
+peri.markers1 <- FeaturePlot(stromals, features = c("Acta2")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("MSCs")  + NoLegend()
+peri.markers2 <- FeaturePlot(stromals, features = c("Myh11")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+peri.markers3 <- FeaturePlot(stromals, features = c("Mcam")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+# ECs
+ec.markers1 <- FeaturePlot(stromals, features = c("Cdh5")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("MSCs")  + NoLegend()
+ec.markers2 <- FeaturePlot(stromals, features = c("Cd34")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+ec.markers3 <- FeaturePlot(stromals, features = c("Pecam1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+supp4.patchwork <- (msc.markers1 | msc.markers2 | msc.markers3) /
+  (olc.markers1 | olc.markers2 | olc.markers3) /
+  (fibro.markers1 | fibro.markers2 | fibro.markers3) /
+  (chondro.markers1 | chondro.markers2 | chondro.markers3) /
+  (peri.markers1 | peri.markers2 | peri.markers3) /
+  (ec.markers1 | ec.markers2 | ec.markers3) + theme(plot.tag = element_text(size = 8))
+
+gt <- patchwork::patchworkGrob(supp4.patchwork)
+pdf("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MainStromalPopulations_MarkerGene_FeaturePlots_SupplementaryFigure4.pdf", width = 12, height = 18)
+gridExtra::grid.arrange(gt, left = textGrob("UMAP 1", gp=gpar(fontsize=24), rot = 90), bottom = textGrob("UMAP 2", gp=gpar(fontsize=24)))
+dev.off()
+```
+# Supplementary Figure 5 - MSC/OLC subcluster highlight genes
+```{r}
+# Cluster 0
+cluster0.1 <- VlnPlot(subtype, features = c("Lepr")) + theme(axis.title.x = element_blank(), axis.text.y = element_text(size = 15)) + ylab("Cluster 0") + NoLegend()
+cluster0.2 <- VlnPlot(subtype, features = c("Lpl")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+cluster0.3 <- VlnPlot(subtype, features = c("Mgp")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+cluster0.4 <- VlnPlot(subtype, features = c("Bmp6")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+# Cluster 1
+cluster1.1 <- VlnPlot(subtype, features = c("Wif1")) + theme(axis.title.x = element_blank(), axis.text.y = element_text(size = 15)) + ylab("Cluster 1") + NoLegend()
+cluster1.2 <- VlnPlot(subtype, features = c("Limch1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+cluster1.3 <- VlnPlot(subtype, features = c("Sfrp1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+cluster1.4 <- VlnPlot(subtype, features = c("Tnc")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+# Cluster 2
+cluster2.1 <- VlnPlot(subtype, features = c("Spp1")) + theme(axis.title.x = element_blank(), axis.text.y = element_text(size = 15)) + ylab("Cluster 2") + NoLegend()
+cluster2.2 <- VlnPlot(subtype, features = c("Mmp13")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+cluster2.3 <- VlnPlot(subtype, features = c("Postn")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+cluster2.4 <- VlnPlot(subtype, features = c("Col6a3")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+# Cluster 3
+cluster3.1 <- VlnPlot(subtype, features = c("Bglap")) + theme(axis.title.x = element_blank(), axis.text.y = element_text(size = 15)) + ylab("Cluster 3") + NoLegend()
+cluster3.2 <- VlnPlot(subtype, features = c("Bglap2")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+cluster3.3 <- VlnPlot(subtype, features = c("Col11a1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+cluster3.4 <- VlnPlot(subtype, features = c("Car3")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+# Cluster 4
+cluster4.1 <- VlnPlot(subtype, features = c("Btg2")) + theme(axis.title.x = element_blank(), axis.text.y = element_text(size = 15)) + ylab("Cluster 4") + NoLegend()
+cluster4.2 <- VlnPlot(subtype, features = c("Atf3")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+cluster4.3 <- VlnPlot(subtype, features = c("Zfp36")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+cluster4.4 <- VlnPlot(subtype, features = c("Socs3")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+# Cluster 5
+cluster5.1 <- VlnPlot(subtype, features = c("Ppbp")) + theme(axis.title.x = element_blank(), axis.text.y = element_text(size = 15), plot.title = element_text(hjust = 0.5)) + labs(title = "Ppbp (Cxcl7)") + ylab("Cluster 5") + NoLegend()
+cluster5.2 <- VlnPlot(subtype, features = c("Pf4")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), plot.title = element_text(hjust = 0.5)) + labs(title = "Pf4 (Cxcl4)") + NoLegend()
+cluster5.3 <- VlnPlot(subtype, features = c("Adamts4")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+cluster5.4 <- VlnPlot(subtype, features = c("Treml1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+msc.subcluster.patchwork <- (cluster0.1 | cluster0.2 | cluster0.3 | cluster0.4) /
+  (cluster1.1 | cluster1.2 | cluster1.3 | cluster1.4) /
+  (cluster2.1 | cluster2.2 | cluster2.3 | cluster2.4) /
+  (cluster3.1 | cluster3.2 | cluster3.3 | cluster3.4) /
+  (cluster4.1 | cluster4.2 | cluster4.3 | cluster4.4) /
+  (cluster5.1 | cluster5.2 | cluster5.3 | cluster5.4) + theme(plot.tag = element_text(size = 8))
+
+gt <- patchwork::patchworkGrob(msc.subcluster.patchwork)
+pdf("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_Subclusters_VlnPlot_SupplementaryFigure5.pdf", width = 18, height = 18)
+gridExtra::grid.arrange(gt, left = textGrob("Scaled Expression", gp=gpar(fontsize=20), rot = 90), bottom = textGrob("Subcluster", gp=gpar(fontsize=20)))
+dev.off()
+```
+# Supplementary figure 6 - BMEC subcluster violin plots
+```{r}
+bmec1 <- VlnPlot(subtype, features = c("Lpl")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("Cluster 0") + NoLegend()
+bmec2 <- VlnPlot(subtype, features = c("Bmp6")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+bmec3 <- VlnPlot(subtype, features = c("Sparcl1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+bmec4 <- VlnPlot(subtype, features = c("Sparcl1")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("Cluster 1") + NoLegend()
+bmec5 <- VlnPlot(subtype, features = c("Timp4")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+bmec6 <- VlnPlot(subtype, features = c("Bmp6")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+bmec7 <- VlnPlot(subtype, features = c("Fbln5")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("Cluster 2") + NoLegend()
+bmec8 <- VlnPlot(subtype, features = c("Sema3g")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+bmec9 <- VlnPlot(subtype, features = c("Sox17")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+bmec10 <- VlnPlot(subtype, features = c("Atf3")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("Cluster 3") + NoLegend()
+bmec11 <- VlnPlot(subtype, features = c("Btg2")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+bmec12 <- VlnPlot(subtype, features = c("Socs3")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+bmec13 <- VlnPlot(subtype, features = c("Vcam1")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("Cluster 4") + NoLegend()
+bmec14 <- VlnPlot(subtype, features = c("Sema3a")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+bmec15 <- VlnPlot(subtype, features = c("Sele")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+bmec16 <- VlnPlot(subtype, features = c("Cenpf")) + theme(axis.title.x = element_blank(), axis.title.y = element_text(size = 20)) + ylab("Cluster 5") + NoLegend()
+bmec17 <- VlnPlot(subtype, features = c("Prc1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+bmec18 <- VlnPlot(subtype, features = c("Knl1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+bmec.subcluster.patchwork <- (bmec1 | bmec2 | bmec3) /
+  (bmec4 | bmec5 | bmec6) /
+  (bmec7 | bmec8 | bmec9) /
+  (bmec10 | bmec11 | bmec12) /
+  (bmec13 | bmec14 | bmec15) /
+  (bmec16 | bmec17 | bmec18) + theme(plot.tag = element_text(size = 8))
+
+gt <- patchwork::patchworkGrob(bmec.subcluster.patchwork)
+pdf("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/BMEC_Subclusters_VlnPlot_SupplementaryFigure6.pdf", width = 12, height = 18)
+gridExtra::grid.arrange(gt, left = textGrob("Scaled Expression", gp=gpar(fontsize=20), rot = 90), bottom = textGrob("Subcluster", gp=gpar(fontsize=20)))
+dev.off()
+```
+# Supplementary Figure 5 and 6 = Case/Control Heatmaps
+# MSC/OLC Supplementary Figures - Secreted - Supplementary Figure 7
+```{r}
+p1.secrete <- VlnPlot(subtype, features = c("Cxcl12")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p2.secrete <- VlnPlot(subtype, features = c("Ppbp")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), plot.title = element_text(hjust = 0.5)) + labs(title = "Ppbp (Cxcl7)") + NoLegend()
+p3.secrete <- VlnPlot(subtype, features = c("Pf4")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), plot.title = element_text(hjust = 0.5)) + labs(title = "Pf4 (Cxcl4)") + NoLegend()
+p4.secrete <- VlnPlot(subtype, features = c("Tnfsf13b")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), plot.title = element_text(hjust = 0.5)) + labs(title = "Tnfsf13b (Baff)") + NoLegend()
+
+p5.secrete <- VlnPlot(subtype, features = c("Bglap")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p6.secrete <- VlnPlot(subtype, features = c("Spp1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), plot.title = element_text(hjust = 0.5)) + labs(title = "Spp1 (Opn)") + NoLegend()
+p7.secrete <- VlnPlot(subtype, features = c("Col1a1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p8.secrete <- VlnPlot(subtype, features = c("Alpl")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+p9.secrete <- VlnPlot(subtype, features = c("Lpl")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p10.secrete <- VlnPlot(subtype, features = c("Adipoq")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p11.secrete <- VlnPlot(subtype, features = c("Mgp")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p12.secrete <- VlnPlot(subtype, features = c("Wif1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+p13.secrete <- VlnPlot(subtype, features = c("Fgf7")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p14.secrete <- VlnPlot(subtype, features = c("Igf1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p15.secrete <- VlnPlot(subtype, features = c("Il7")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p16.secrete <- VlnPlot(subtype, features = c("Tnfsf11")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), plot.title = element_text(hjust = 0.5)) + labs(title = "Tnfsf11 (Rankl)") + NoLegend()
+
+p17.secrete <- VlnPlot(subtype, features = c("Tgfb1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p18.secrete <- VlnPlot(subtype, features = c("Tgfb3")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p19.secrete <- VlnPlot(subtype, features = c("Sp7")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p20.secrete <- VlnPlot(subtype, features = c("Vegfa")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+secrete.patchwork <- (p1.secrete | p2.secrete | p3.secrete | p4.secrete) /
+  (p5.secrete | p6.secrete | p7.secrete | p8.secrete) /
+  (p9.secrete | p10.secrete | p11.secrete | p12.secrete) /
+  (p13.secrete | p14.secrete | p15.secrete | p16.secrete) /
+  (p17.secrete | p18.secrete | p19.secrete | p20.secrete) + theme(plot.tag = element_text(size = 8))
+
+gt <- patchwork::patchworkGrob(secrete.patchwork)
+pdf("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_SecretedMolecules_VlnPlot_ConditionSplit_SupplementaryFigure8.pdf", width = 12, height = 15)
+gridExtra::grid.arrange(gt, left = textGrob("Scaled Expression", gp=gpar(fontsize=24), rot = 90), bottom = textGrob("Subcluster", gp=gpar(fontsize=24)))
+dev.off()
+```
+# MSC/OLC Supplementary Figures - Receptors - Supplementary Figure 8
+```{r}
+library(patchwork)
+library(grid)
+
+p1.recep <- VlnPlot(subtype, features = c("Lepr")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p2.recep <- VlnPlot(subtype, features = c("Tgfbr1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p3.recep <- VlnPlot(subtype, features = c("Tgfbr2")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p4.recep <- VlnPlot(subtype, features = c("Tgfbr3")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p5.recep <- VlnPlot(subtype, features = c("Tnfrsf1a")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), plot.title = element_text(hjust = 0.5)) + labs(title = "Tnfrsf1a (Tnfr1)") + NoLegend()
+p6.recep <- VlnPlot(subtype, features = c("Tnfrsf1b")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank(), plot.title = element_text(hjust = 0.5)) + labs(title = "Tnfrsf1b (Tnfr2)") + NoLegend()
+p7.recep <- VlnPlot(subtype, features = c("Acvr1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p8.recep <- VlnPlot(subtype, features = c("Acvr1b")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p9.recep <- VlnPlot(subtype, features = c("Fgfr1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p10.recep <- VlnPlot(subtype, features = c("Fgfr2")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p11.recep <- VlnPlot(subtype, features = c("Fgfr3")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p12.recep <- VlnPlot(subtype, features = c("Pth1r")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p13.recep <- VlnPlot(subtype, features = c("Bmpr1a")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p14.recep <- VlnPlot(subtype, features = c("Bmpr2")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p15.recep <- VlnPlot(subtype, features = c("Lrp5")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p16.recep <- VlnPlot(subtype, features = c("Lrp6")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p1.adhese <- VlnPlot(subtype, features = c("Vcam1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p2.adhese <- VlnPlot(subtype, features = c("Icam1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p3.adhese <- VlnPlot(subtype, features = c("Jag1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+p4.adhese <- VlnPlot(subtype, features = c("Notch1")) + theme(axis.title.x = element_blank(), axis.title.y = element_blank()) + NoLegend()
+
+receptor.patchwork <- (p1.recep | p2.recep | p3.recep | p4.recep) /
+  (p5.recep | p6.recep | p7.recep | p8.recep) /
+  (p9.recep | p10.recep | p11.recep | p12.recep) /
+  (p13.recep | p14.recep | p15.recep | p16.recep) /
+  (p1.adhese | p2.adhese | p3.adhese | p4.adhese) + theme(plot.tag = element_text(size = 8))
+
+gt <- patchwork::patchworkGrob(receptor.patchwork)
+pdf("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_ReceptorAdhesionMolecules_VlnPlot_ConditionSplit_SupplementaryFigure8.pdf", width = 12, height = 16)
+gridExtra::grid.arrange(gt, left = textGrob("Scaled Expression", gp=gpar(fontsize=20), rot = 90), bottom = textGrob("Subcluster", gp=gpar(fontsize=20)))
+dev.off()
+```
+# MSC/OLC Supplementary Figures - Adhesion Molecules - Supplementary Figure 10
+
+# BMEC Supplementary Figure Genes
+Secreted = Adamts4, Adamts5, Hif1a, Eno1, Tjp1, Vegfa, Sparc, Il15, Tgfb1, Ly96, Flna, Vim, Ywhah, Ywhaz
+Receptors = Flt1, Kdr, Flt4, Tnfrsf1a, Aplnr, Itgav, Tlr3, Tlr4
+Adhesion = Selp, Sele, Vcam1, Icam1
+
+# Temptest 
+# Csf3 = Gcsf
+# Csf2 = Gmcsf
+```{r}
+# Secreted
+
+# Receptors
+
+# For immune figure
+VlnPlot(subtype, features = c("Ccl5", "Ccl6", "Ccl19", "Cxcl9", "Cxcl10"))
+```
+
+# Supplementary Figure 12 - BMEC Secreted Molecules
+```{r}
+secrete1 <- VlnPlot(subtype, features = c("Vcan")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete2 <- VlnPlot(subtype, features = c("Vegfa")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete3 <- VlnPlot(subtype, features = c("Angpt1")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete4 <- VlnPlot(subtype, features = c("Sparc")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete5 <- VlnPlot(subtype, features = c("Tgfb1")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete6 <- VlnPlot(subtype, features = c("Ly96")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete7 <- VlnPlot(subtype, features = c("Eno1")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete8 <- VlnPlot(subtype, features = c("Hif1a")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete9 <- VlnPlot(subtype, features = c("Tjp1")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete10 <- VlnPlot(subtype, features = c("Il15")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete11 <- VlnPlot(subtype, features = c("Bmp4")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete12 <- VlnPlot(subtype, features = c("Egfl7")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete13 <- VlnPlot(subtype, features = c("Flna")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete14 <- VlnPlot(subtype, features = c("Vim")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete15 <- VlnPlot(subtype, features = c("Adamts4")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+secrete16 <- VlnPlot(subtype, features = c("Adamts5")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+
+secrete.patchwork <- (secrete1 | secrete2 | secrete3 | secrete4) /
+  (secrete5 | secrete6 | secrete7 | secrete8) /
+  (secrete9 | secrete10 | secrete11 | secrete12) /
+  (secrete13 | secrete14 | secrete15 | secrete16) + theme(plot.tag = element_text(size = 8))
+
+gt <- patchwork::patchworkGrob(secrete.patchwork)
+pdf("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/BMEC_SecretedMolecules_VlnPlot_SupplementaryFigure12.pdf", width = 16, height = 16)
+gridExtra::grid.arrange(gt, left = textGrob("Scaled Expression", gp=gpar(fontsize=16), rot = 90), bottom = textGrob("Subcluster", gp=gpar(fontsize=16)))
+dev.off()
+```
+# Supplementary Figure 13 - Receptor Molecules
+```{r}
+receptor1 <- VlnPlot(subtype, features = c("Flt1")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + labs(title = "Flt (Vegfr-1)") + NoLegend()
+receptor2 <- VlnPlot(subtype, features = c("Kdr")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + labs(title = "Kdr (Vegfr-2)") + NoLegend()
+receptor3 <- VlnPlot(subtype, features = c("Flt4")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + labs(title = "Flt4 (Vegfr-4)") + NoLegend()
+receptor4 <- VlnPlot(subtype, features = c("Tnfrsf1a")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + labs(title = "Tnfrsf1a (Tnfr1)") + NoLegend()
+receptor5 <- VlnPlot(subtype, features = c("Jag1")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+receptor6 <- VlnPlot(subtype, features = c("Notch1")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+receptor7 <- VlnPlot(subtype, features = c("Ifnar1")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+receptor8 <- VlnPlot(subtype, features = c("Ifngr1")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+receptor9 <- VlnPlot(subtype, features = c("Tlr3")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+receptor10 <- VlnPlot(subtype, features = c("Tlr4")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+receptor11 <- VlnPlot(subtype, features = c("Itgav")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+receptor12 <- VlnPlot(subtype, features = c("Aplnr")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+adhese1 <- VlnPlot(subtype, features = c("Selp")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+adhese2 <- VlnPlot(subtype, features = c("Sele")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+adhese3 <- VlnPlot(subtype, features = c("Vcam1")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+adhese4 <- VlnPlot(subtype, features = c("Icam1")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+
+receptor.patchwork <- (receptor1 | receptor2 | receptor3 | receptor4) /
+  (receptor5 | receptor6 | receptor7 | receptor8) /
+  (receptor9 | receptor10 | receptor11 | receptor12) /
+  (adhese1 | adhese2 | adhese3 | adhese4) + theme(plot.tag = element_text(size = 8))
+
+gt <- patchwork::patchworkGrob(receptor.patchwork)
+pdf("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/BMEC_ReceptorAdheseMolecules_VlnPlot_SupplementaryFigure13.pdf", width = 16, height = 16)
+gridExtra::grid.arrange(gt, left = textGrob("Scaled Expression", gp=gpar(fontsize=16), rot = 90), bottom = textGrob("Subcluster", gp=gpar(fontsize=16)))
+dev.off()
+```
+# Supplementary Figure 14 - Proinflammatory Cytokines in BMECs
+```{r}
+cytokine1 <- VlnPlot(subtype, features = c("Il1b")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+cytokine2 <- VlnPlot(subtype, features = c("Il6")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+cytokine3 <- VlnPlot(subtype, features = c("Il6st")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+cytokine4 <- VlnPlot(subtype, features = c("Il11")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+cytokine5 <- VlnPlot(subtype, features = c("Il15")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+cytokine6 <- VlnPlot(subtype, features = c("Ccl2")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+cytokine7 <- VlnPlot(subtype, features = c("Ccl5")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+cytokine8 <- VlnPlot(subtype, features = c("Ccl6")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+cytokine9 <- VlnPlot(subtype, features = c("Ccl19")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+cytokine10 <- VlnPlot(subtype, features = c("Cxcl1")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+cytokine11 <- VlnPlot(subtype, features = c("Cxcl9")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+cytokine12 <- VlnPlot(subtype, features = c("Cxcl10")) + theme(axis.title.x = element_blank(), 
+                                                            axis.title.y = element_blank()) + NoLegend()
+
+cytokine.patchwork <- (cytokine1 | cytokine2 | cytokine3 | cytokine4) /
+  (cytokine5 | cytokine6 | cytokine7 | cytokine8) /
+  (cytokine9 | cytokine10 | cytokine11 | cytokine12) + theme(plot.tag = element_text(size = 8))
+
+gt <- patchwork::patchworkGrob(cytokine.patchwork)
+pdf("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/BMEC_ProinflammatoryCytokines_VlnPlot_SupplementaryFigure14.pdf", width = 16, height = 12)
+gridExtra::grid.arrange(gt, left = textGrob("Scaled Expression", gp=gpar(fontsize=16), rot = 90), bottom = textGrob("Subcluster", gp=gpar(fontsize=16)))
+dev.off()
+```
+
+
+# Supplementary Table 1-3. GSEA Top Gene tables
+```{r}
+# Function to clean frames
+clean_frame <- function(df, drop.cols){
+  df <- df[, !names(df) %in% drop.cols]
+  df <- head(df, n = 10)
+  df$`RUNNING ES` <- round(df$`RUNNING ES`, 4)
+  df$PATHWAY <- "ALLOGRAFT REJECTION"
+  df <- df %>%
+    relocate(PATHWAY)
+  df$PATHWAY[2:10] <- ""
+  return(df)
+}
+```
+Supplementary Table 1 - All Stromal GSEA Top Genes
+```{r}
+require(data.table)
+allograft <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_ALLOGRAFT_REJECTION.tsv"))
+coagulation <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_COAGULATION.tsv"))
+myc <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_MYC_TARGETS_V1.tsv"))
+oxi.phos <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_OXIDATIVE_PHOSPHORYLATION.tsv"))
+angio <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_ANGIOGENESIS.tsv"))
+inter.alpha <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_INTERFERON_ALPHA_RESPONSE.tsv"))
+inter.gamma <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_HALLMARK_INTERFERON_GAMMA_RESPONSE.tsv"))
+
+drop.cols <- c("NAME", "TITLE", "RANK METRIC SCORE", "CORE ENRICHMENT", "V8") # Columns to drop
+
+allo.df <- clean_frame(allograft, drop.cols)
+coag.df <- clean_frame(coagulation, drop.cols)
+myc.df <- clean_frame(myc, drop.cols)
+oxi.df <- clean_frame(oxi.phos, drop.cols)
+angio.df <- clean_frame(angio, drop.cols)
+interA.df <- clean_frame(inter.alpha, drop.cols)
+interG.df <- clean_frame(inter.gamma, drop.cols)
+
+# Combine frames we want for final output
+stromal.combined <- rbind(interA.df, interG.df, oxi.df, myc.df)
+colnames(stromal.combined) <- c("Pathway", "Gene", "Gene Rank", "Running ES") # Rename columns
+table_caption <- c("Top GSEA Genes in MM Stromal Cells", "Supplementary Table 1") # Define captions
+
+# Run it
+stromal.table <- stromal.combined |>
+  flextable() |>
+  add_header_lines(values = rev(table_caption)) |>
+  padding(padding = 0, part = "all") |>
+  padding(padding.right = 10, part = "all") |>
+  autofit() |>
+  bold(part = "header", i = 1) |>
+  italic(part = "header", i = c(2:length(table_caption))) |>
+  align(part = "header", i = c(1:length(table_caption)), align = "left") |>
+  border(part = "head", i = c(1:length(table_caption)),
+         border = list("width" = 0, color = "black", style = "solid"))
+save_as_docx(stromal.table, path = "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/allStromal_GSEA_TopGenes_SupplementaryTable1.docx", align = "center")
+```
+# Supplementary Table 2 - MSC/OLC GSEA Top Genes
+```{r}
+require(data.table)
+complement <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/MSCOLC_HALLMARK_COMPLEMENT.tsv"))
+allograft <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/MSCOLC_HALLMARK_ALLOGRAFT_REJECTION.tsv"))
+inter.alpha <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/MSCOLC_HALLMARK_INTERFERON_ALPHA_RESPONSE.tsv"))
+inter.gamma <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/MSCOLC_HALLMARK_INTERFERON_GAMMA_RESPONSE.tsv"))
+oxi.phos <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/MSCOLC_HALLMARK_OXIDATIVE_PHOSPHORYLATION.tsv"))
+
+drop.cols <- c("NAME", "TITLE", "RANK METRIC SCORE", "CORE ENRICHMENT", "V8") # Columns to drop
+
+comp.df <- clean_frame(complement, drop.cols)
+allo.df <- clean_frame(allograft, drop.cols)
+interA.df <- clean_frame(inter.alpha, drop.cols)
+interG.df <- clean_frame(inter.gamma, drop.cols)
+oxi.df <- clean_frame(oxi.phos, drop.cols)
+
+# Combine frames we want for final output
+mscolc.combined <- rbind(interA.df, interG.df, oxi.df)
+colnames(mscolc.combined) <- c("Pathway", "Gene", "Gene Rank", "Running ES") # Rename columns
+table_caption <- c("Top GSEA Genes in MM MSC/OLC", "Supplementary Table 2") # Define captions
+
+# Run it
+mscolc.table <- mscolc.combined |>
+  flextable() |>
+  add_header_lines(values = rev(table_caption)) |>
+  padding(padding = 0, part = "all") |>
+  padding(padding.right = 10, part = "all") |>
+  autofit() |>
+  bold(part = "header", i = 1) |>
+  italic(part = "header", i = c(2:length(table_caption))) |>
+  align(part = "header", i = c(1:length(table_caption)), align = "left") |>
+  border(part = "head", i = c(1:length(table_caption)),
+         border = list("width" = 0, color = "black", style = "solid"))
+save_as_docx(mscolc.table, path = "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/MSCOLC_GSEA_TopGenes_SupplementaryTable2.docx", align = "center")
+```
+# Supplementary Table 3 - BMEC GSEA Top Genes
+```{r}
+# Load in tables
+require(data.table)
+allo.reject <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_HALLMARK_ALLOGRAFT_REJECTION.tsv"))
+inflam.respo <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_HALLMARK_INFLAMMATORY_RESPONSE.tsv"))
+inter.alpha <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_HALLMARK_INTERFERON_ALPHA_RESPONSE.tsv"))
+inter.gamma <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_HALLMARK_INTERFERON_GAMMA_RESPONSE.tsv"))
+myc.targets <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_HALLMARK_MYC_TARGETS_V1.tsv"))
+oxi.phos <- as.data.frame(fread("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_HALLMARK_OXIDATIVE_PHOSPHORYLATION.tsv"))
+
+drop.cols <- c("NAME", "TITLE", "RANK METRIC SCORE", "CORE ENRICHMENT", "V8") # Columns to drop
+
+allo.df <- clean_frame(allo.reject, drop.cols)
+inflam.df <- clean_frame(inflam.respo, drop.cols)
+interA.df <- clean_frame(inter.alpha, drop.cols)
+interG.df <- clean_frame(inter.gamma, drop.cols)
+myc.df <- clean_frame(myc.targets, drop.cols)
+oxi.df <- clean_frame(oxi.phos, drop.cols)
+
+# Combine frames we want for final output
+bmec.combined <- rbind(interA.df, interG.df, oxi.df, inflam.df)
+colnames(bmec.combined) <- c("Pathway", "Gene", "Gene Rank", "Running ES") # Rename columns
+table_caption <- c("Top GSEA Genes in MM BMEC", "Supplementary Table 3") # Define captions
+
+# Run it
+bmec.table <- bmec.combined |>
+  flextable() |>
+  add_header_lines(values = rev(table_caption)) |>
+  padding(padding = 0, part = "all") |>
+  padding(padding.right = 10, part = "all") |>
+  autofit() |>
+  bold(part = "header", i = 1) |>
+  italic(part = "header", i = c(2:length(table_caption))) |>
+  align(part = "header", i = c(1:length(table_caption)), align = "left") |>
+  border(part = "head", i = c(1:length(table_caption)),
+         border = list("width" = 0, color = "black", style = "solid"))
+  save_as_docx(bmec.table, path = "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/GSEA/BMEC_GSEA_TopGenes_SupplementaryTable3.docx", align = "center")
+show_col(hue_pal()(7))
+
+DimPlot(stromals)
+```
+# MSCOLC subcluster relative abundances
+```{r}
+healthy.subtype <- subset(subtype, subset = case.control == "Healthy")
+myeloma.subtype <- subset(subtype, subset = case.control == "Myeloma")
+
+healthy.value <- as.numeric(table(healthy.subtype@meta.data$seurat_clusters))[1:6]
+myeloma.value <- as.numeric(table(myeloma.subtype@meta.data$seurat_clusters))[1:6]
+
+healthy.frac <- healthy.value/sum(healthy.value)
+myeloma.frac <- myeloma.value/sum(myeloma.value)
+
+healthy.labels <- paste(as.character(round(healthy.frac, digits=4)*100), "%", sep="")
+myeloma.labels <- paste(as.character(round(myeloma.frac, digits=4)*100), "%", sep="")
+
+healthy.pie <- data.frame(group=c("Cluster 0", "Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5"), 
+                          value = healthy.value, 
+                          perc = healthy.frac, 
+                          labels = healthy.labels)
+
+myeloma.pie <- data.frame(group=c("Cluster 0", "Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5"), 
+                          value = myeloma.value, 
+                          perc = myeloma.frac, 
+                          labels = myeloma.labels)
+
+healthy.pie <- healthy.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(healthy.pie$value)*100) %>%
+  mutate(ypos = cumsum(prop) - 0.5 * prop)
+
+myeloma.pie <- myeloma.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(myeloma.pie$value)*100) %>%
+  mutate(ypos = cumsum(prop) - 0.5 * prop)
+
+healthy.pie.plot <- ggplot(healthy.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = rep(c("white")),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) + 
+  scale_fill_manual(values = stromal.colors) +
+  coord_polar(theta = "y") +
+  ggtitle("Healthy") +
+  theme_void() + NoLegend() + theme(plot.title = element_text(hjust = 0.5))
+
+myeloma.pie.plot <- ggplot(myeloma.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = rep(c("white")),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) + 
+  scale_fill_manual(values = stromal.colors) +
+  coord_polar(theta = "y") +
+  ggtitle("Myeloma") + theme_void() + theme(plot.title = element_text(hjust = 0.5))
+  
+patchwork.pie <- healthy.pie.plot | myeloma.pie.plot
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/SupplementaryFigure8_MSCOLC_SubclusterPieCharts.png", width = 10, height = 6)
+```
+#
+```{r}
+healthy.subtype <- subset(subtype, subset = case.control == "Healthy")
+myeloma.subtype <- subset(subtype, subset = case.control == "Myeloma")
+
+healthy.value <- as.numeric(table(healthy.subtype@meta.data$seurat_clusters))[1:6]
+myeloma.value <- as.numeric(table(myeloma.subtype@meta.data$seurat_clusters))[1:6]
+
+healthy.frac <- healthy.value/sum(healthy.value)
+myeloma.frac <- myeloma.value/sum(myeloma.value)
+
+healthy.labels <- paste(as.character(round(healthy.frac, digits=4)*100), "%", sep="")
+myeloma.labels <- paste(as.character(round(myeloma.frac, digits=4)*100), "%", sep="")
+
+healthy.pie <- data.frame(group=c("Cluster 0", "Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5"), 
+                          value = healthy.value, 
+                          perc = healthy.frac, 
+                          labels = healthy.labels)
+
+myeloma.pie <- data.frame(group=c("Cluster 0", "Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5"), 
+                          value = myeloma.value, 
+                          perc = myeloma.frac, 
+                          labels = myeloma.labels)
+
+healthy.pie <- healthy.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(healthy.pie$value)*100) %>%
+  mutate(ypos = cumsum(prop) - 0.5 * prop)
+
+myeloma.pie <- myeloma.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(myeloma.pie$value)*100) %>%
+  mutate(ypos = cumsum(prop) - 0.5 * prop)
+
+healthy.pie.plot <- ggplot(healthy.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = rep(c("white")),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) + 
+  scale_fill_manual(values = stromal.colors) +
+  coord_polar(theta = "y") +
+  ggtitle("Healthy") +
+  theme_void() + NoLegend() + theme(plot.title = element_text(hjust = 0.5))
+
+myeloma.pie.plot <- ggplot(myeloma.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = rep(c("white")),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) + 
+  scale_fill_manual(values = stromal.colors) +
+  coord_polar(theta = "y") +
+  ggtitle("Myeloma") + theme_void() + theme(plot.title = element_text(hjust = 0.5))
+  
+patchwork.pie <- healthy.pie.plot | myeloma.pie.plot
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/SupplementaryFigure11_BMEC_SubclusterPieCharts.png", width = 10, height = 6)
+```
+
+# Temp testing pie chart for Fig 3 overall stromal populations
+```{r}
+stromal.colors <- c("#F8766D", "#C49A00", "#53B400", "#00C094", "#00B6EB", "#A58AFF", "#FB61D7")
+
+right.levels <- levels(stromals@meta.data$celltypes_ECsubbed)
+healthy.values <- as.numeric(table(healthy@meta.data$celltypes_ECsubbed))
+myeloma.values <- as.numeric(table(myeloma@meta.data$celltypes_ECsubbed))
+
+healthy.frac <- healthy.values/sum(healthy.values)
+myeloma.frac <- myeloma.values/sum(myeloma.values)
+
+healthy.labels <- paste(as.character(round(healthy.frac, digits=4)*100), "%", sep="")
+myeloma.labels <- paste(as.character(round(myeloma.frac, digits=4)*100), "%", sep="")
+
+healthy.pie <- data.frame(group=c("SECs", "AECs", "Fibroblasts", "MSCs", "OLCs", "Pericytes", "Chondrocytes"), 
+                          value = healthy.values, 
+                          perc = healthy.frac, 
+                          labels = healthy.labels)
+
+myeloma.pie <- data.frame(group=c("SECs", "AECs", "Fibroblasts", "MSCs", "OLCs", "Pericytes", "Chondrocytes"), 
+                          value = myeloma.values, 
+                          perc = myeloma.frac, 
+                          labels = myeloma.labels)
+
+healthy.pie <- healthy.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(healthy.pie$value)*100) %>%
+  mutate(ypos = cumsum(prop) - 0.5 * prop)
+
+myeloma.pie <- myeloma.pie %>%
+  arrange(desc(group)) %>%
+  mutate(prop = value / sum(myeloma.pie$value)*100) %>%
+  mutate(ypos = cumsum(prop) - 0.5 * prop)
+
+healthy.pie.plot <- ggplot(healthy.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = rep(c("white")),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) + 
+  scale_fill_manual(values = stromal.colors) +
+  coord_polar(theta = "y") +
+  ggtitle("Healthy") +
+  theme_void() + NoLegend() + theme(plot.title = element_text(hjust = 0.5))
+
+myeloma.pie.plot <- ggplot(myeloma.pie, aes(x = "", y = perc, fill = group)) +
+  geom_col(color = "black") +
+  geom_label(aes(label = labels), color = rep(c("white")),
+             position = position_stack(vjust = 0.5),
+             show.legend = FALSE) +
+  guides(fill = guide_legend(title = "")) + 
+  scale_fill_manual(values = stromal.colors) +
+  coord_polar(theta = "y") +
+  ggtitle("Myeloma") + theme_void() + theme(plot.title = element_text(hjust = 0.5))
+  
+patchwork.pie <- healthy.pie.plot | myeloma.pie.plot
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/Figure3_PieCharts.png", width = 10, height = 6)
+```
+
+

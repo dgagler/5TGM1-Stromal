@@ -1,0 +1,157 @@
+---
+title: "Generate_DESeq2_GSEA_Input"
+output: html_document
+date: "2023-01-31"
+---
+
+```{r}
+library(Seurat)
+library(Matrix)
+library(tibble)
+library(SummarizedExperiment)
+library(DESeq2)
+```
+# Read in stromals
+```{r}
+stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/Rerun_Mouse5TG_StromalsOnly_AnnotatedObject6_21PCs_NoLib_FIXEDLIBRARIES_6.rds")
+celltype <- "Fibroblasts"
+healthy.celltype <- subset(stromals, subset = celltype_cond == paste0("Healthy ", celltype))
+myeloma.celltype <- subset(stromals, subset = celltype_cond == paste0("MM ", celltype))
+```
+# Write matrices
+```{r}
+matrix <- as.data.frame(GetAssayData(object = healthy.celltype, slot = "counts"))
+matrix <- matrix + 1
+write.table(matrix, paste0('/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/healthy', celltype, '_counts.txt'), sep = "\t")
+
+matrix <- as.data.frame(GetAssayData(object = myeloma.celltype, slot = "counts"))
+matrix <- matrix + 1
+write.table(matrix, paste0('/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/myeloma', celltype, '_counts.txt'), sep = "\t")
+```
+# Make other metadata
+# Need a metadata file with 3 columns...1st is cell names, 2nd is the condition (so in this case, just "myeloma" or "healthy", and 3rd is "paired end")
+```{r}
+metadata <- as.data.frame(colnames(healthy.celltype))
+colnames(metadata) <- "V1"
+metadata$V2 <- "Healthy"
+metadata$V3 <- "paired-end"
+head(metadata)
+
+write.table(metadata, paste0("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/healthy", celltype, "_conditions.txt"))
+
+###
+
+metadata <- as.data.frame(colnames(myeloma.celltype))
+colnames(metadata) <- "cellnames"
+metadata$condition <- "Myeloma"
+metadata$sequencing <- "paired-end"
+head(metadata)
+
+write.table(metadata, paste0("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/myeloma", celltype, "_conditions.txt"))
+```
+####################################################################################################
+################################# Randomized pseudobulking version #################################
+# DESeq2 (which is employed for GSEA) requires pseudobulking (cells collated into samples) to properly do DE gene expression.
+# Unfortunately, we dont have samples. So we're gonna try to fake it by randomly subsampling cells down into 3 (and 5) samples per condition.
+# Thinking that the best way to do this is to apply the pseudobulk to the healthies and myelomas separately and then remerging the objects
+
+# THIS ISNT IT. Take another look at example counts....need to generate matrix wherein each row is the pseudobulk. And then the condition file doesn't need to be fully populated, I think? Just 1 row for each subsample?
+
+```{r}
+# Case/control breakdown
+stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/Rerun_Mouse5TG_StromalsOnly_AnnotatedObject6_21PCs_NoLib_FIXEDLIBRARIES_6.rds")
+healthy <- subset(stromals, subset = case.control == "Healthy")
+myeloma <- subset(stromals, subset = case.control == "Myeloma")
+
+# Randomly assigning cells to N samples
+n <- 3
+healthy@meta.data$pseudobulk <- sample(factor(rep(1:n, length.out = nrow(healthy@meta.data)), labels = paste0("Healthy", 1:n)))
+table(healthy@meta.data$pseudobulk)
+myeloma@meta.data$pseudobulk <- sample(factor(rep(1:n, length.out = nrow(myeloma@meta.data)), labels = paste0("Myeloma", 1:n)))
+table(myeloma@meta.data$pseudobulk)
+```
+# Get subsample
+```{r}
+celltype <- "Fibroblasts"
+healthy.subtype <- subset(healthy, subset = celltypes_ECsubbed == celltype)
+myeloma.subtype <- subset(myeloma, subset = celltypes_ECsubbed == celltype)
+```
+# Aggregating for pseudobulk
+```{r}
+sce <- as.SingleCellExperiment(healthy.subtype)
+# Generate sample level metadata
+
+# Named vector of sample names
+sids <- purrr::set_names(levels(sce$pseudobulk))
+
+## Determine the number of cells per sample
+table(sce$pseudobulk)
+
+## Turn named vector into a numeric vector of number of cells per sample
+n_cells <- as.numeric(table(sce$pseudobulk))
+
+## Determine how to reoder the samples (rows) of the metadata to match the order of sample names in sids vector
+m <- match(sids, sce$pseudobulk)
+
+## Create the sample level metadata by combining the reordered metadata with the number of cells corresponding to each sample.
+ei <- data.frame(colData(sce)[m, ], 
+                  n_cells, row.names = NULL) %>%
+  select(c("case.control", "pseudobulk", "n_cells"))
+ei
+
+# Aggregate the counts per sample_id and cluster_id
+
+# Subset metadata to only include the cluster and sample IDs to aggregate across
+groups <- colData(sce)[, c("pseudobulk")]
+
+# Aggregate across cluster-sample groups
+pb <- aggregate.Matrix(t(counts(sce)), 
+                       groupings = groups, fun = "sum") 
+
+class(pb)
+
+dim(pb)
+
+pb[1:6, 1:6]
+```
+
+# Write matrices
+```{r}
+matrix <- as.data.frame(GetAssayData(object = healthy.subtype, slot = "counts"))
+matrix <- matrix + 1
+write.table(matrix, paste0('/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/healthy', celltype, '_counts.txt'), sep = "\t")
+
+matrix <- as.data.frame(GetAssayData(object = myeloma.subtype, slot = "counts"))
+matrix <- matrix + 1
+write.table(matrix, paste0('/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/myeloma', celltype, '_counts.txt'), sep = "\t")
+```
+# Make other metadata
+# Need a metadata file with 3 columns...1st is cell names, 2nd is the condition (so in this case, just "myeloma" or "healthy", and 3rd is "paired end")
+```{r}
+metadata <- as.data.frame(healthy.subtype@meta.data$pseudobulk)
+colnames(metadata) <- "Samples"
+metadata$V2 <- "Healthy"
+metadata$V3 <- "paired-end"
+head(metadata)
+
+write.table(metadata, paste0("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/healthy", celltype, "_pseudobulk_Conditions.txt"))
+
+###
+
+metadata <- as.data.frame(myeloma.subtype@meta.data$pseudobulk)
+colnames(metadata) <- "Samples"
+metadata$condition <- "Myeloma"
+metadata$sequencing <- "paired-end"
+head(metadata)
+
+write.table(metadata, paste0("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/myeloma", celltype, "_pseudobulk_Conditions.txt"))
+```
+# TESTTT
+```{r}
+Heatmap(healthy.subtype@assays$integrated@scale.data, cluster_rows = TRUE, cluster_columns = TRUE,
+        column_names_gp = gpar(fontsize = 0), row_names_gp = gpar(fontsize = 0),
+        clustering_distance_columns = "euclidean", clustering_method_columns = "average",
+        
+        )
+```
+

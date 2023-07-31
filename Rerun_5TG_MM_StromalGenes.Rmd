@@ -1,0 +1,92 @@
+---
+title: "Rerun_5TG_MM_Factors"
+output: html_document
+date: "2022-12-12"
+---
+
+```{r}
+library(Seurat)
+library(ggplot2)
+```
+
+```{r}
+stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/Rerun_Mouse5TG_StromalsOnly_AnnotatedObject5_removedBadClusters.rds")
+healthies <- subset(stromals, subset = case.control == "healthy")
+myelomas <- subset(stromals, subset = case.control == "myeloma")
+```
+# General
+```{r}
+il6.h <- FeaturePlot(healthies, features = "Il6")
+il6.m <- FeaturePlot(myelomas, features = "Il6")
+
+vcam1.h <- FeaturePlot(healthies, features = "Vcam1")
+vcam1.m <- FeaturePlot(myelomas, features = "Vcam1")
+
+# Flt4 aka Vegfr-3
+flt4.h <- FeaturePlot(healthies, features = "Flt4")
+flt4.m <- FeaturePlot(myelomas, features = "Flt4")
+
+# Ly6a aka Sca-1
+ly6a.h <- FeaturePlot(healthies, features = "Ly6a")
+ly6a.m <- FeaturePlot(myelomas, features = "Ly6a")
+
+tnf.h <- FeaturePlot(healthies, features = "Tnf")
+tnf.m <- FeaturePlot(myelomas, features = "Tnf")
+
+general.features <- grid.arrange(il6.h, vcam1.h, flt4.h, ly6a.h, tnf.h, 
+                              il6.m, vcam1.m, flt4.m, ly6a.m, tnf.m,
+                              nrow = 2)
+ggsave(plot = general.features, filename = "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/General_StromalMM_FeaturePlotGrid.png", height = 9, width = 21)
+```
+
+# Osteoblasts in MM
+```{r}
+dkk1.h <- FeaturePlot(healthies, features = "Dkk1")
+dkk1.m <- FeaturePlot(myelomas, features = "Dkk1")
+
+sfrp2.h <- FeaturePlot(healthies, features = "Sfrp2")
+sfrp2.m <- FeaturePlot(myelomas, features = "Sfrp2")
+
+il7.h <- FeaturePlot(healthies, features = "Il7")
+il7.m <- FeaturePlot(myelomas, features = "Il7")
+
+hgf.h <- FeaturePlot(healthies, features = "Hgf")
+hgf.m <- FeaturePlot(myelomas, features = "Hgf")
+
+runx2.h <- FeaturePlot(healthies, features = "Runx2")
+runx2.m <- FeaturePlot(myelomas, features = "Runx2")
+
+osteoblast.features <- grid.arrange(dkk1.h, sfrp2.h, il7.h, hgf.h, runx2.h, 
+                              dkk1.m, sfrp2.m, il7.m, hgf.m, runx2.m,
+                              nrow = 2)
+ggsave(plot = osteoblast.features, filename = "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Osteoblast_StromalMM_FeaturePlotGrid.png", height = 7, width = 21)
+```
+# Adipocytes in MM
+```{r}
+# Increased methylation of Ppar-gamma
+pparg.h <- FeaturePlot(healthies, features = "Pparg")
+pparg.m <- FeaturePlot(myelomas, features = "Pparg")
+
+# Secrete these molecules which support MM cells
+ccl2.h <- FeaturePlot(healthies, features = "Ccl2")
+ccl2.m <- FeaturePlot(myelomas, features = "Ccl2")
+
+cxcl12.h <- FeaturePlot(healthies, features = "Cxcl12")
+cxcl12.m <- FeaturePlot(myelomas, features = "Cxcl12")
+
+# Stimulation of Vcam1 in MSCs leads to activation of the following
+cnr1.h <- FeaturePlot(healthies, features = "Cnr1")
+cnr1.m <- FeaturePlot(myelomas, features = "Cnr1")
+
+trim63.h <- FeaturePlot(healthies, features = "Trim63")
+trim63.m <- FeaturePlot(myelomas, features = "Trim63")
+
+adipocyte.features <- grid.arrange(pparg.h, ccl2.h, cxcl12.h, cnr1.h, trim63.h, 
+                              pparg.m, ccl2.m, cxcl12.m, cnr1.m, trim63.m, 
+                              nrow = 2)
+ggsave(plot = adipocyte.features, filename = "/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/Adipocyte_StromalMM_FeaturePlotGrid.png", height = 9, width = 21)
+```
+
+
+
+

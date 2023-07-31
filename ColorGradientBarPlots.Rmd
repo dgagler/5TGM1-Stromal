@@ -1,0 +1,33 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-07-18"
+---
+
+```{r}
+bmec.gsea <- read.table("/Users/gagled01/Downloads/BMEC_GSEA.tsv", sep = "\t", header = T)
+mscolc.gsea <- read.table("/Users/gagled01/Downloads/MSCOLC_GSEA.tsv", sep = "\t", header = T)
+```
+
+```{r}
+plotting.df <- data.frame(bmec.gsea$NAME, bmec.gsea$NES, bmec.gsea$FDR.q.val)
+plotting.df <- head(plotting.df, n = 20)
+colnames(plotting.df) <- c("Pathway", "NES", "FDR.q.val")
+plotting.df$Pathway <- gsub("HALLMARK_", "", plotting.df$Pathway)
+
+plotting.df2 <- data.frame(mscolc.gsea$NAME, mscolc.gsea$NES, mscolc.gsea$FDR.q.val)
+plotting.df2 <- head(plotting.df2, n = 20)
+colnames(plotting.df2) <- c("Pathway", "NES", "FDR.q.val")
+plotting.df2$Pathway <- gsub("HALLMARK_", "", plotting.df2$Pathway)
+```
+
+```{r}
+ggplot(plotting.df, aes(x=NES, y=reorder(Pathway,-FDR.q.val), fill=FDR.q.val)) + geom_bar(stat="identity")+scale_fill_gradient(low="red", high="blue") +
+  ylab("") + theme_minimal()
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/BMEC_GSEA_Barplot.png", height = 6, width = 8)
+
+ggplot(plotting.df2, aes(x=NES, y=reorder(Pathway,-FDR.q.val), fill=FDR.q.val)) + geom_bar(stat="identity")+scale_fill_gradient(low="red", high="blue") +
+  ylab("") + theme_minimal()
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/figures/BMEC_MSCOLC_Barplot.png", height = 6, width = 8)
+```
+

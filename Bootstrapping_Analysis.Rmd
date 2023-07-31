@@ -1,0 +1,88 @@
+---
+title: "Mouse_5TGM1_NewBootstrapping"
+output: html_document
+date: "2023-05-29"
+---
+
+# Load libraries
+```{r}
+rm(list = ls()) # clear environment
+options(warn=-1) # turn off warning messages globally
+
+library(Seurat)
+library(dplyr)
+library(reshape2)
+library(gridExtra)
+library(ggpubr)
+
+options(future.globals.maxSize=1000000000000000) # Set max global size so we don't run out of memory
+```
+# Load data
+```{r}
+stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/objects/5TGM1_StromalsOnly_Annotated_21PCs_ContamRemoved_FinalObject.rds")
+```
+# Define null distribution, etc. 
+```{r}
+stromals@meta.data$celltypes <- droplevels(stromals@meta.data$celltypes)
+relative.abundances <- table(stromals@meta.data$celltypes)/sum(table(stromals@meta.data$celltypes))
+
+null_abundances <- as.numeric(relative.abundances)
+celltype_order <- names(relative.abundances)
+
+n_cells <- ncol(stromals)
+n_trials <- 2
+```
+
+```{r}
+null_sec <- rep(NA, n_trials)
+null_fibro <- rep(NA, n_trials)
+null_msc <- rep(NA, n_trials)
+null_olc <- rep(NA, n_trials)
+null_peri <- rep(NA, n_trials)
+null_aec <- rep(NA, n_trials)
+null_chondro <- rep(NA, n_trials)
+
+for (i in 1:n_trials) {
+  count_sec = 0
+  count_fibro = 0
+  count_msc = 0
+  count_olc = 0
+  count_peri = 0
+  count_aec = 0
+  count_chondro = 0
+  
+  for (j in 1:n_cells) {
+    rand_value <- runif(1)
+    print(rand_value)
+    
+    if (rand_value < null_abundances[1]) {
+      count_chondro + 1
+    } else if (rand_value > null_abundances[1] & 
+               rand_value < null_abundances[1] + null_abundances[2]) {
+      count_olc + 1
+    } else if (rand_value > null_abundances[1] + null_abundances[2] & 
+               rand_value < null_abundances[1] + null_abundances[2] + null_abundances[3]) {
+      count_peri + 1
+    } else if (rand_value > null_abundances[1] + null_abundances[2] + null_abundances[3] & 
+               rand_value < null_abundances[1] + null_abundances[2] + null_abundances[3] + null_abundances[4]) {
+      count_sec + 1
+    } else if (rand_value > null_abundances[1] + null_abundances[2] + null_abundances[3] + null_abundances[4] & 
+               rand_value < null_abundances[1] + null_abundances[2] + null_abundances[3] + null_abundances[4] + null_abundances[5]) {
+      count_msc + 1
+    } else if (rand_value > null_abundances[1] + null_abundances[2] + null_abundances[3] + null_abundances[4] + null_abundances[5] & 
+               rand_value < null_abundances[1] + null_abundances[2] + null_abundances[3] + null_abundances[4] + null_abundances[5] + null_abundances[6]) {
+      count_fibro + 1
+    } else {
+      count_aec + 1
+    }
+  }
+  null_chondro[i] <- i
+  null_olc[i] <- count_olc/n_cells
+  null_peri[i] <- count_peri/n_cells
+  null_sec[i] <- count_sec/n_cells
+  null_msc[i] <- count_msc/n_cells
+  null_fibro[i] <- count_fibro/n_cells
+  null_aec[i] <- count_aec/n_cells
+}
+```
+
