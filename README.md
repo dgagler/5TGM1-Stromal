@@ -1,1 +1,5 @@
-Code associated with the 5TGM1 Stromal BME Project.
+Multiple Myeloma is a plasma cell malignancy characterized by abnormal antibody production. After receiving driver mutations in the germinal center, the founding myeloma cell travels to the bone marrow where it alters the bone marrow microenvioronment to be more conducive to its long-term residency and proliferation. Part of the changes in the bone marrow include those to the stromal compartment. The stromal compartment includes mesenchymal stem cells, fibroblasts, osteo-lineage cells, chondrocytes, endothelial cells, and pericytes, among others. The ways in which the stromal compartment responds to myeloma is not fully understood. This project aims to help elucidate this. 
+
+To that effect, mice were injected with the 5TGM1 murine myeloma model and their bone marrows harvested 1 week after detectable serum M-spike protein. Stromal cells were isolated from the bone marrow by excluding cells with common erythroid and immune markers. Resulting single-cells underwent RNA sequencing via 10X Genomics.
+
+This repository includes the code used for the analysis of this data, including, but not limited to, preprocessing, quality control filtering, integration, clustering, trajectory analysis, and gene set enrichment analysis (GSEA), in addition to the code used to generate both main and supplementary figures.
