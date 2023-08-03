@@ -1,0 +1,136 @@
+---
+title: "ComplexHeatmap_Prep"
+output: html_document
+date: "2023-02-14"
+---
+################################################################################
+
+
+################################################################################
+
+# Libraries
+```{r}
+library(Seurat)
+library(ggplot2)
+library(circlize)
+library(ComplexHeatmap)
+library(ggpubr)
+library(grid)
+library(gridExtra)
+library(tidyverse)
+library(scales)
+show_col(hue_pal()(6))
+
+colors <- c("#F8766D", "#B79F00", "#00BA38", "#00BFC4", "#619CFF", "#F564E3")
+```
+# Load in stromal data
+```{r}
+stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/Rerun_Mouse5TG_StromalsOnly_AnnotatedObject6_21PCs_NoLib_FIXEDLIBRARIES_6.rds")
+```
+# Subset celltype
+```{r}
+subtype <- subset(stromals, subset = celltypes_ECsubbed %in% c("Sinusoidal ECs", "Arterial ECs"))
+```
+# Standard workflow
+```{r}
+subtype <- ScaleData(subtype)
+subtype <- FindVariableFeatures(subtype, nfeatures = 2000)
+subtype <- RunPCA(subtype, npcs = 5)
+subtype <- FindNeighbors(subtype, dims = 1:5)
+subtype <- FindClusters(subtype, resolution = 0.12)
+subtype <- RunUMAP(subtype, dims = 1:5)
+DimPlot(subtype, split.by = "case.control")
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_Subclustered_ConditionSplit_UMAP.png", height = 4, width = 8)
+```
+# Get differentially expressed genes
+```{r}
+Idents(subtype) <- "case.control" 
+all.markers <- FindAllMarkers(subtype, assay = "RNA")
+all.markers <- all.markers[order(-all.markers$avg_log2FC),]
+```
+# Get DA
+```{r}
+healthy.sub <- subset(subtype, subset = case.control == "Healthy")
+myeloma.sub <- subset(subtype, subset = case.control == "Myeloma")
+
+table(healthy.sub@meta.data$seurat_clusters)/sum(table(healthy.sub@meta.data$seurat_clusters))
+table(myeloma.sub@meta.data$seurat_clusters)/sum(table(myeloma.sub@meta.data$seurat_clusters))
+table(subtype@meta.data$seurat_clusters)/sum(table(subtype@meta.data$seurat_clusters))
+
+```
+### For use when getting gene order for different clusters
+```{r}
+output_gene_order <- c()
+
+for(i in c("0", "1", "2", "3", "4", "5")) {
+  print(i)
+
+  cluster_genes <- all.markers %>% filter(cluster == i) %>% dplyr::arrange(p_val_adj) %>%
+                      dplyr::filter(avg_log2FC > 0) %>%
+                      dplyr::select(gene) %>%
+                      head(n = 15) %>%
+                      purrr::as_vector()
+  print(cluster_genes)
+
+  output_gene_order <- c(output_gene_order, cluster_genes)
+}
+
+output_gene_order <- unique(output_gene_order)
+```
+### For use when using case/control markers and gene orders
+```{r}
+output_gene_order <- c()
+
+for(i in c("Healthy", "Myeloma")) {
+  print(i)
+
+  cluster_genes <- all.markers %>% dplyr::filter(cluster == i) %>% dplyr::arrange(p_val_adj) %>%
+                      dplyr::filter(avg_log2FC > 0) %>%
+                      dplyr::select(gene) %>%
+                      head(n = 80) %>%
+                      purrr::as_vector()
+  print(cluster_genes)
+
+  output_gene_order <- c(output_gene_order, cluster_genes)
+}
+
+output_gene_order <- unique(output_gene_order)
+```
+# Subset matrix by top genes
+```{r}
+matrix <- subtype@assays$RNA@scale.data
+#matrix.subset <- matrix[rownames(matrix) %in% c(top100_pos_lfc_genes, top100_neg_lfc_genes),]
+matrix.roworder.subset <- matrix[rownames(matrix) %in% output_gene_order,]
+
+output_gene_order_sub <- output_gene_order[output_gene_order %in% rownames(matrix.roworder.subset)]
+```
+# Get annotation metadata
+```{r}
+annotation <- HeatmapAnnotation("Disease Status" = subtype@meta.data$case.control,
+                                "Seurat Cluster" = subtype@meta.data$seurat_clusters,
+                                simple_anno_size = unit(3, "mm"),
+                                col = list("Disease Status" = c("Healthy" = "green", 
+                                                                "Myeloma" = "purple"),
+                                           "Seurat Cluster" = c("0" = "#F8766D",
+                                                         "1" = "#B79F00",
+                                                         "2" = "#00BA38",
+                                                         "3" = "#00BFC4",
+                                                         "4" = "#619CFF",
+                                                         "5" = "#F564E3"
+                                                         )))
+
+col_fun = colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+```
+# Complex heatmap
+```{r}
+Heatmap(matrix.roworder.subset, cluster_rows = F, cluster_columns = TRUE,
+        row_order = output_gene_order_sub,
+        show_column_dend = F,
+        col = col_fun,
+        column_names_gp = gpar(fontsize = 0), row_names_gp = gpar(fontsize = 4.5),
+        clustering_distance_columns = "euclidean", clustering_method_columns = "average",
+        column_dend_height = unit(40,"mm"), row_dend_width = unit(40, "mm"),
+        top_annotation = annotation,
+        heatmap_legend_param = list(title = "Scaled Expression")
+        )
+```
