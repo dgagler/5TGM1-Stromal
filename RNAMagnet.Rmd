@@ -1,0 +1,27 @@
+---
+title: "RNAmagnet"
+output: html_document
+date: "2023-08-07"
+---
+
+Load libraries
+```{r}
+library(RNAMagnet)
+library(ggplot2)
+library(Seurat)
+
+ligrec <- getLigandsReceptors("1.0.0",cellularCompartment = c("ECM","Surface","Both"),manualAnnotation = "Correct")
+head(ligrec)
+
+```
+Load data
+```{r}
+stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/5TGM1_StromalsOnly_Annotated_21PCs_ContamRemoved_FinalObject.rds")
+```
+Run it?
+```{r}
+result <- RNAMagnetAnchors(stromals, anchors = c("Sinusoidal ECs","Arteriolar ECs","Osteoblasts"), .version = "1.0.0")
+
+```
+
+
