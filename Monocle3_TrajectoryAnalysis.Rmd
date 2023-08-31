@@ -71,5 +71,5 @@ cds <- order_cells(cds)
 cds <- order_cells(cds, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == "1"]))
 plot_cells(cds, color_cells_by = "pseudotime", label_groups_by_cluster = F,
            label_branch_points = F, label_roots = F, label_leaves = F) + facet_grid(. ~ case.control) 
-ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_Monocle_TrajectoryUMAP_Pseudotime_ConditionSplit_Cluster1Root.png", height = 5, width = 8)
+ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_Monocle_TrajectoryUMAP_Pseudotime_ConditionSplit_Cluster1Root_8.31.23.Revamp.png", height = 5, width = 8)
 ```
