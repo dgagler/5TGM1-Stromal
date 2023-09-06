@@ -8,9 +8,18 @@
 To study the myeloma niche in a controlled fashion we utilized a mouse model. The 5TGM1 mouse MM model reliably recapitulates both the genetic and physiological features typical of human MM. For this study, 4 mice were injected with 5TGM1 and 4 mice were injected with phosphate buffer saline (PBS) as healthy controls. 1 week after the detection of M-spike proteins in the blood of the 5TGM1 mice the mice were sacrificed and stromal cells were isolated from their bone marrows via flow cytometry and fluoresence-activated cell sorting (FACS). Finally, these cells underwent single-cell RNA sequencing via 10X Genomics. Data was analyzed in R, primarily following a Seurat framework.
 
 # Quality Control
-The data gets to me in the form of Cellranger outputs. Cellranger is a software tool which aligns single-cell RNA sequence reads to a reference genome to generate feature-barcode matrices. In the context of single-cell RNA data, features represent genes and barcodes represent individual cells. For this experiment, our cells were divided across 5 libraries, or sequencing runs. We load the libraries as follows:
+The data gets to me in the form of Cellranger outputs. Cellranger is a software tool which aligns single-cell RNA sequence reads to a reference genome to generate feature-barcode matrices. In the context of single-cell RNA data, features represent genes and barcodes represent individual cells. Notably, this experiment also involved sequencing hashtag oligos (HTO), which can be used to identify which sample a particular cell originated from.
+
+For this experiment, our cells were divided across 5 libraries, or sequencing runs. For each library, we read in the Cellranger outputs, create a Seurat object from the RNA assay, add in the HTO assay, and add some basic metadata, like so:
 ```{r}
-lib1.data <- Read10X('/Users/dgagler/projects/5TGM1_Mouse/sample1/filtered_feature_bc_matrix')
+lib1.data  <- Read10X('/Users/dgagler/5TGM1/lib1/filtered_feature_bc_matrix')
+lib1.data <- CreateSeuratObject(counts = lib1.data$`Gene Expression`, min.cells=3, min.features=200) 
+```
+Due to filtering some cells with the min.cells and min.features parameters above, we will have mismatched matrix sizes between our RNA and HTO assays, which we correct for by removing the filtered cells from the HTO assay.
+```{r}
+lib1.diff <- setdiff(colnames(lib1.data$`Antibody Capture`), colnames(lib1)) # Getting the unmatched cell
+lib1.data$`Antibody Capture` <- lib1.data$`Antibody Capture`[, !colnames(lib1.data$`Antibody Capture`) %in% lib1.diff] # Removing it
+
 ```
 
 
