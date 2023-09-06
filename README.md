@@ -1,6 +1,6 @@
 # Single-cell RNA Analysis of the Bone Marrow Stromal Compartment
 
-**Multiple Myeloma (MM)** is a plasma cell malignancy characterized by abnormal antibody production. After receiving driver mutations in the germinal center, the founding myeloma cell travels to the bone marrow where it alters its local cellular environment to be more conducive to its long-term residency and proliferation. This is termed the myeloma niche. Healthy stem cell, which give rise to immune cells in normal contexts, also exist in privileged bone marrow niches. **Stromal cells are an essential part of both healthy stem cell and myeloma cell niches**, providing structural support, growth and survival signals, and regulating immune cell accesse. While it is appreciated that stromal cells support myeloma progression, the specific ways in which the stromal compartment responds to the myeloma cell is not well understood. *This project aims to better understand these changes.*
+**Multiple Myeloma (MM)** is a plasma cell malignancy characterized by abnormal antibody production. After receiving driver mutations in the germinal center, the founding myeloma cell travels to the bone marrow where it alters its local cellular environment to be more conducive to its long-term residency and proliferation. This is termed the myeloma niche. Healthy stem cell, which give rise to immune cells in normal contexts, also exist in privileged bone marrow niches. **Stromal cells are an essential part of both healthy stem cell and myeloma cell niches**, providing structural support, growth and survival signals, and regulating immune cell accesse. While it is appreciated that stromal cells support myeloma progression, the specific ways in which the stromal compartment responds to the myeloma cell is not well understood. **This project aims to better understand the stromal compartment in the context of multiple myeloma.**
 
 # Quick Experimental Overview:
 <img width="826" alt="GitPic1" src="https://github.com/dgagler/5TGM1-Stromal/assets/31450828/f77999e2-8b97-41ee-af38-51d51e703d16">
@@ -31,14 +31,14 @@ lib1[["HTO"]] <- CreateAssayObject(counts = lib1.data$`Antibody Capture` + 1, co
 # Adding basic metadata
 lib1[["library"]] <- "lib1"
 lib1[["condition"]] <- "control"
-```
-Next, we add metadata and compute the percentage of mitochondrial transcripts in each cell. A high percentage of mitochondrial transcripts is often reflective of dead/dying/stressed cells, which we would prefer to exclude from our analysis.
-```{r}
+
+# Computing the percentage of mitochondrial transcripts per cell
+# A high percentage of mitochondrial transcripts is often reflective of dead/dying/stressed cells
 lib1[["percent.mt"]] <- PercentageFeatureSet(lib1, pattern="^mt-")
 ```
 After preprocessing all 5 libraries, it's time to perform quality filtering. First, we visualize some basic QC metrics including the number of unique UMIs (transcripts) per cell, the number of unique genes per cell, and the % of mitochondrial transcripts. We assess these UMI and gene metrics because having too few UMIs or genes is suggestive of dead or low quality cells and having too many is suggestive of doublets or multiplets (multiple cells in the same sequencing droplet). Quality filtering practices vary, but for this project we elected to exclude cells with:
-* > 5% mitochondrial transcripts
-* < 500 unique genes or transcripts
+* greater than 5% mitochondrial transcripts
+* less than 500 unique genes or transcripts
 * within the top 2% of unique genes
 * within the top 5% of unique transcripts
   
@@ -47,7 +47,7 @@ After preprocessing all 5 libraries, it's time to perform quality filtering. Fir
 This filtering left us with 45,030, reflecting a 14.9% loss.
 
 ## HTO Data
-After QC filtering, we look towards the hashtags. For each library, we normalize the HTO data and then demultiplex via Seurat's HTODemux() function.
+After QC filtering, we look towards the hashtags. Hashtag oligos (HTOs) are nucleotide barcodes that are uniquely associated with a specific sample. For each library, we normalize the HTO data and then demultiplex the hashtags (determining which cell came from which sample) via Seurat's HTODemux() function.
 ```{r}
 lib1 <- NormalizeData(object = lib1,
                            assay = "HTO",
@@ -58,6 +58,9 @@ lib1 <- HTODemux(object = lib1,
                       positive.quantile = 0.999)
 ```
 Looking at hashtag expression and the number of singlets identified by the demultiplexing, it is obvious that the hashtag data did not perform very well. In particular, these heatmaps show low HTO expression across libraries and the pie charts show the breakdown of singlets (what we want), doublets, and negatives. Given the low quality of the HTO data, we will exclude this information from downstream analysis.
+
+<img width="519" alt="gitpic3" src="https://github.com/dgagler/5TGM1-Stromal/assets/31450828/40ac29da-188d-4e43-b141-7baf117cd3f1">
+<img width="517" alt="gitpic4" src="https://github.com/dgagler/5TGM1-Stromal/assets/31450828/d85c1291-5286-4761-8842-2736ea1d07ca">
 
 # Integration
 Now that our 5 libraries have been quality filtered, it's time to integrate them together. Due to the inherent nature of single-cell library preparation and sequencing technologies, some amount of variation in gene expression is expected between libraries which has nothing to do with the underlying biology. This is commonly termed *batch effect*. There are many ways to correct for this, but here we utilized a Seurat integration method which simultaneously merges together separate data objects and corrects batch effect.
@@ -101,7 +104,11 @@ DimPlot(integrated, label = T, group.by = "integrated_snn_res.0.2")
 ```
 INSERT PIC OF UMAP WITH CLUSTERS
 # Cellular Annotation
-We annotated our clusters manually, using apriori knowledge about immune and stromal marker genes. About 2/3 of our 45,030 cells ended up being immune cells, which isn't entirely unexpected as the stromal compartment is a low abundance population, meaning that we had to start with a large number of cells, and our flow sorting methods are not perfect.
+We annotated our clusters manually, using apriori knowledge about immune and stromal marker genes. About 2/3 of our 45,030 cells ended up being immune cells, which isn't entirely unexpected as the stromal compartment is a low abundance population, meaning that we had to start with a large number of cells, and our flow sorting methods are not perfect. We removed immune cells from the downstream analysis, resulting in 14,219 high quality stromal cells.
+<img width="886" alt="gitpic5" src="https://github.com/dgagler/5TGM1-Stromal/assets/31450828/72d12785-531c-4f2e-9107-554524cfb11f">
+
+To annotate the stromal populations, we used a set of marker genes derived from Barawyano et al., 2019. We used *Lepr* expression to identify mesenchymal stem cells (MSC), *Bglap* for osteo-lineage cells (OLC), *Fn1* for fibroblasts, *Sox9* for chondrocytes, *Acta2* for pericytes, and *Cdh5* for endothelial cells.
+<img width="956" alt="gitpic6" src="https://github.com/dgagler/5TGM1-Stromal/assets/31450828/e2862ee7-6290-4b34-ae35-c90e921743f9">
 
 # Bootstrapping Relative Abundance
 
