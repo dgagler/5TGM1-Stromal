@@ -16,10 +16,10 @@ lib1.data  <- Read10X('/Users/dgagler/5TGM1/lib1/filtered_feature_bc_matrix')
 lib1.data <- CreateSeuratObject(counts = lib1.data$`Gene Expression`, min.cells=3, min.features=200) 
 ```
 Due to filtering some cells with the min.cells and min.features parameters above, we will have mismatched matrix sizes between our RNA and HTO assays, which we correct for by removing the filtered cells from the HTO assay.
+
 ```{r}
 lib1.diff <- setdiff(colnames(lib1.data$`Antibody Capture`), colnames(lib1)) # Getting the unmatched cell
 lib1.data$`Antibody Capture` <- lib1.data$`Antibody Capture`[, !colnames(lib1.data$`Antibody Capture`) %in% lib1.diff] # Removing it
-
 ```
 
 
