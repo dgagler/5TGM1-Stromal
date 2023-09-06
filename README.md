@@ -10,19 +10,28 @@ To study the myeloma niche in a controlled fashion we utilized a mouse model. Th
 # Quality Control
 The data gets to me in the form of Cellranger outputs. Cellranger is a software tool which aligns single-cell RNA sequence reads to a reference genome to generate feature-barcode matrices. In the context of single-cell RNA data, features represent genes and barcodes represent individual cells. Notably, this experiment also involved sequencing hashtag oligos (HTO), which can be used to identify which sample a particular cell originated from.
 
-For this experiment, our cells were divided across 5 libraries, or sequencing runs. For each library, we read in the Cellranger outputs, create a Seurat object from the RNA assay, add in the HTO assay, and add some basic metadata, like so:
+For this experiment, our cells were divided across 5 libraries, or sequencing runs. For each library, we read in the Cellranger outputs, create a Seurat object from the RNA assay, add in the HTO assay, and add some basic metadata:
 ```{r}
+# Creating Seurat object based on gene expression data
 lib1.data  <- Read10X('/Users/dgagler/5TGM1/lib1/filtered_feature_bc_matrix')
 lib1.data <- CreateSeuratObject(counts = lib1.data$`Gene Expression`, min.cells=3, min.features=200) 
 ```
 Due to filtering some cells with the min.cells and min.features parameters above, we will have mismatched matrix sizes between our RNA and HTO assays, which we correct for by removing the filtered cells from the HTO assay.
-
 ```{r}
-lib1.diff <- setdiff(colnames(lib1.data$`Antibody Capture`), colnames(lib1)) # Getting the unmatched cell
-lib1.data$`Antibody Capture` <- lib1.data$`Antibody Capture`[, !colnames(lib1.data$`Antibody Capture`) %in% lib1.diff] # Removing it
+# Getting the unmatched cells
+lib1.diff <- setdiff(colnames(lib1.data$`Antibody Capture`), colnames(lib1))
+# Removing them
+lib1.data$`Antibody Capture` <- lib1.data$`Antibody Capture`[, !colnames(lib1.data$`Antibody Capture`) %in% lib1.diff]
+# Adding +1 to the matrix is a quick fix for a downstream error when demultiplexing the cells.
+lib1[["HTO"]] <- CreateAssayObject(counts = lib1.data$`Antibody Capture` + 1, colnames = (x = lib1))
 ```
-
-
+Next, we add metadata and compute the percentage of mitochondrial transcripts in each cell. A high percentage of mitochondrial transcripts is often reflective of dead/dying/stressed cells, which we would prefer to exclude from our analysis.
+```{r}
+lib1[["library"]] <- "lib1"
+lib1[["condition"]] <- "control"
+# We use a basic Seurat function + regex to identify mitochondrial genes.
+lib1[["percent.mt"]] <- PercentageFeatureSet(lib1, pattern="^mt-")
+```
 # Single-cell RNA Analysis
 
 # Integration
