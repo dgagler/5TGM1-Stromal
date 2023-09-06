@@ -90,27 +90,99 @@ lib.anchors <- FindIntegrationAnchors(object.list = lib.list, anchor.features = 
 # perform integration
 integrated.bm <- IntegrateData(anchorset = lib.anchors)
 ```
-# Single-cell RNA Analysis
+# Standard Workflow
 After integration, we perform a "standard workflow" on the data. This involves scaling the data by a factor of 10,000, performing a principal component analysis, clustering, and generating a UMAP to visualize our dataset.
 ```{r}
-DefaultAssay(integrated) <- "integrated"
+DefaultAssay(integrated.bm) <- "integrated"
 
-mouseBM <- ScaleData(integrated)
-mouseBM <- RunPCA(integrated, npcs = 30)
-mouseBM <- FindNeighbors(integrated, dims = 1:30)
-mouseBM <- FindClusters(integrated, resolution = 0.2)
-mouseBM <- RunUMAP(integrated, dims = 1:30)
-DimPlot(integrated, label = T, group.by = "integrated_snn_res.0.2")
+mouseBM <- ScaleData(integrated.bm)
+mouseBM <- RunPCA(integrated.bm, npcs = 30)
+mouseBM <- FindNeighbors(integrated.bm, dims = 1:30)
+mouseBM <- FindClusters(integrated.bm, resolution = 0.2)
+mouseBM <- RunUMAP(integrated.bm, dims = 1:30)
+DimPlot(integrated.bm, label = T, group.by = "integrated_snn_res.0.2")
 ```
-INSERT PIC OF UMAP WITH CLUSTERS
 # Cellular Annotation
 We annotated our clusters manually, using apriori knowledge about immune and stromal marker genes. About 2/3 of our 45,030 cells ended up being immune cells, which isn't entirely unexpected as the stromal compartment is a low abundance population, meaning that we had to start with a large number of cells, and our flow sorting methods are not perfect. We removed immune cells from the downstream analysis, resulting in 14,219 high quality stromal cells.
 <img width="886" alt="gitpic5" src="https://github.com/dgagler/5TGM1-Stromal/assets/31450828/72d12785-531c-4f2e-9107-554524cfb11f">
 
-To annotate the stromal populations, we used a set of marker genes derived from Barawyano et al., 2019. We used *Lepr* expression to identify mesenchymal stem cells (MSC), *Bglap* for osteo-lineage cells (OLC), *Fn1* for fibroblasts, *Sox9* for chondrocytes, *Acta2* for pericytes, and *Cdh5* for endothelial cells.
+To annotate the stromal populations, we used a set of marker genes derived from Barawyano et al., 2019. Using a combination of violin plots and feature plots, we can assess which clusters are expressing which marker genes. We used *Lepr* expression to identify mesenchymal stem cells (MSC), *Bglap* for osteo-lineage cells (OLC), *Fn1* for fibroblasts, *Sox9* for chondrocytes, *Acta2* for pericytes, and *Cdh5* for endothelial cells.
 <img width="956" alt="gitpic6" src="https://github.com/dgagler/5TGM1-Stromal/assets/31450828/e2862ee7-6290-4b34-ae35-c90e921743f9">
 
 # Bootstrapping Relative Abundance
+We are interested in understanding changes in the bone marrow stromal cell populations in response to MM. One way in which these populations differ is in quantity. As an aside, assessing abundances is epistemologically tricky due to the compositional nature of NGS data, but this is not the place to discuss that. See this discussion by Thomas Quinn for more information on the subject - https://academic.oup.com/bioinformatics/article/34/16/2870/4956011
+
+For the time being, however, we will be satisfied with using relative abundances. But we will want to support any findings we may have statistically. This is made more complicated by the fact that our hashtagging data failed. If the hashtagging data had succeeded, we would have 4 replicates in each of our experimental conditions. Since it didn't, we don't. As a workaround, we will employ a common statistical approach: **the bootstrap**.
+
+Bootstrapping is a resampling method that allows for the calculation of standard errors, confidence intervals, p-values, and hypothesis testing. 
+
+In our case, we are interested in knowing whether the observed relative abundance of our stromal cell types are significantly different between 5TGM1 and control mice. To do this, we subset our dataset into 5TGM1 and control, randomly sample (with replacement) from each of our dataset 100x, compute mean relative abundances in our bootstrapped data, and then perform a two-sample T-test to assess the mean relative abundances per cell type.
+
+```{r}
+# subset by condition
+myeloma <- subset(stromals, subset = condition %in% "myeloma")
+healthy <- subset(stromals, subset = condition %in% "healthy")
+
+# get abundances of cell types for resampling
+myeloma.abundances <- myeloma@meta.data$celltypes
+healthy.abundances <- healthy@meta.data$celltypes
+
+# total cells by condition
+n_cells_myeloma <- ncol(myeloma)
+n_cells_healthy <- ncol(healthy)
+
+# randomly subsample with replacement and divide by total cells to get relative abundances
+myeloma.resamples <- lapply(1:100, function(i) table(sample(myeloma.abundances, replace = T, prob = ))/n_cells_myeloma)
+healthy.resamples <- lapply(1:100, function(i) table(sample(healthy.abundances, replace = T, prob = ))/n_cells_healthy)
+
+# parse out relative abundance distributions for each celltype -- MM
+mm.resamples.sec <- sapply(myeloma.resamples,"[[",1)
+mm.resamples.msc <- sapply(myeloma.resamples,"[[",2)
+
+# parse out relative abundance distributions for each celltype -- Healthy
+healthy.resamples.sec <- sapply(healthy.resamples,"[[",1)
+healthy.resamples.msc <- sapply(healthy.resamples,"[[",2)
+```
+Once we've performed our bootstrapping, we'll compute p-values and visualize our data via boxplots using rstatix and patchwork
+
+***note: for the sake of brevity, I've only shown code in the below block for 2 of the 7 cell types
+```{r}
+library(rstatix)
+library(patchwork)
+
+# create dfs for plotting
+sec.plotting.df <- melt(data.frame(Myeloma = mm.resamples.sec, Healthy = healthy.resamples.sec, Celltype = "SEC"))
+colnames(sec.plotting.df)[2] <- "Condition"
+
+msc.plotting.df <- melt(data.frame(Myeloma = mm.resamples.msc, Healthy = healthy.resamples.msc, Celltype = "MSC"))
+colnames(msc.plotting.df)[2] <- "Condition"
+
+# generate individual box plots by cell type
+sec.bxp <- ggboxplot(sec.plotting.df, x = "Condition", y = "value", fill = "Condition", notch = TRUE) +
+  ylab("") + xlab("") + ggtitle("SEC") +
+  theme_bw(base_size = 16) + 
+  theme(axis.text.x = element_blank(),
+         axis.ticks.x = element_blank(),
+        plot.title = element_text(hjust = 0.5)) + NoLegend()
+sec.stat.test <- sec.stat.test %>% add_xy_position("Condition")
+sec.bxp <- sec.bxp + 
+  stat_pvalue_manual(sec.stat.test, label = "T-test, p = {p}") +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.1)))
+
+msc.bxp <- ggboxplot(msc.plotting.df, x = "Condition", y = "value", fill = "Condition", notch = TRUE) +
+  ylab("Relative Abundance") + xlab("") + ggtitle("MSC") +
+  theme_bw(base_size = 16) +
+theme(axis.text.x = element_blank(),
+         axis.ticks.x = element_blank(),
+        plot.title = element_text(hjust = 0.5)) + NoLegend()
+msc.stat.test <- msc.stat.test %>% add_xy_position("Condition")
+msc.bxp <- msc.bxp + 
+  stat_pvalue_manual(msc.stat.test, label = "T-test, p = {p}") +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.1)))
+
+msc.bxp | olc.bxp | sec.bxp | aec.bxp | fibro.bxp | chondro.bxp | peri.bxp
+```
+![gitpic7](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/e7bfbea9-c816-4a81-935f-a49cf174d353)
 
 # Subcluster Analysis
 
