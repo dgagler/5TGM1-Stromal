@@ -1,5 +1,5 @@
 # Single-cell RNA Analysis of the Bone Marrow Stromal Compartment
-![smallerMMcellsmaybe](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/ec066e4e-0113-412b-885a-0ec54ada4765)
+<img width="469" alt="Screen Shot 2023-09-06 at 3 05 12 PM" src="https://github.com/dgagler/5TGM1-Stromal/assets/31450828/59b2a82e-8d73-42ad-8dc7-9bf130effe1c">
 
 **Multiple Myeloma (MM)** is a plasma cell malignancy characterized by abnormal antibody production. After receiving driver mutations in the germinal center, the founding myeloma cell travels to the bone marrow where it alters its local cellular environment to be more conducive to its long-term residency and proliferation. This is termed the myeloma niche. Healthy stem cell, which give rise to immune cells in normal contexts, also exist in privileged bone marrow niches. **Stromal cells are an essential part of both healthy stem cell and myeloma cell niches**, providing structural support, growth and survival signals, and regulating immune cell accesse. While it is appreciated that stromal cells support myeloma progression, the specific ways in which the stromal compartment responds to the myeloma cell is not well understood. *This project aims to better understand these changes.*
 
