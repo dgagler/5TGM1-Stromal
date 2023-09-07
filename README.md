@@ -285,6 +285,7 @@ Heatmap(matrix.roworder.subset, cluster_rows = F, cluster_columns = TRUE,
         heatmap_legend_param = list(title = "Scaled Expression")
         )
 ```
+
 ![gitpic11](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/04f447ea-484f-4d93-94e5-2f346c392721)
 
 As mentioned earlier, MSC-lineage cells are known to differentiation into adipocytes and osteo-lineage cells. As such, we will use this framework to characterize our MSC-lineage cells. Marker genes for adipocytes include Adipoq, Lpl, and Mgp. Wif1 has been associated with undifferentiated or multi-potent MSC. Spp1 is a marker gene for early-osteocytes and Bglap is a marker for mature osteocytes, which are bone forming cells. From this heatmap, we can see that cluster 0 is enriched in adipo-genes, cluster 1 expresses adipo genes and Wif1, cluster 2 expresses the early osteocyte gene Spp1, and cluster 3 expresses the mature osteocyte gene Bglap. Cluster 4 expresses similar adipo marker genes to cluster 0 but also expresses a unique set of transcription factors. Cluster 5 is hard to assess from the heatmap, so we generate some violin and feature plots to see if we can glean a new perspective.
