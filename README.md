@@ -305,9 +305,10 @@ These subclustering results were compiled together with knowledge about MM cell 
 ![gitpic13](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/a6a665a7-f59e-45dc-8237-20b985f65d86)
 
 # Trajectory Analysis
-
+adding to this soon...
 # Gene Set Enrichment Analysis
-
+adding to this soon...
 # EndoMT Analysis
+adding to this soon...
 
 This repository includes the code used for the analysis of this data, including, but not limited to, preprocessing, quality control filtering, integration, clustering, trajectory analysis, and gene set enrichment analysis (GSEA), in addition to the code used to generate both main and supplementary figures.
