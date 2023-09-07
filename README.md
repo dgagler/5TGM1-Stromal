@@ -112,7 +112,11 @@ To annotate the stromal populations, we used a set of marker genes derived from 
 # Bootstrapping Relative Abundance
 We are interested in understanding changes in the bone marrow stromal cell populations in response to MM. One way in which these populations differ is in quantity. As an aside, assessing abundances is epistemologically tricky due to the compositional nature of NGS data, but this is not the place to discuss that. See this discussion by Thomas Quinn for more information on the subject - https://academic.oup.com/bioinformatics/article/34/16/2870/4956011
 
-For the time being, however, we will be satisfied with using relative abundances. But we will want to support any findings we may have statistically. This is made more complicated by the fact that our hashtagging data failed. If the hashtagging data had succeeded, we would have 4 replicates in each of our experimental conditions. Since it didn't, we don't. As a workaround, we will employ a common statistical approach: **the bootstrap**.
+For the time being, however, we will be satisfied with using relative abundances. From the below barplots, you can see that the myeloma condition has relatively more MSC, SEC, and chondrocytes. The chondrocytes are a very small population (0.4-1.2%), however, so we are more interested in the MSC and SEC cells.
+
+<img width="572" alt="gitpic8" src="https://github.com/dgagler/5TGM1-Stromal/assets/31450828/89074ede-8ec4-4669-8fab-37255376f042">
+
+But we will want to support any findings we may have statistically. This is made more complicated by the fact that our hashtagging data failed. If the hashtagging data had succeeded, we would have 4 replicates in each of our experimental conditions. Since it didn't, we don't. As a workaround, we will employ a common statistical approach: **the bootstrap**.
 
 Bootstrapping is a resampling method that allows for the calculation of standard errors, confidence intervals, p-values, and hypothesis testing. 
 
@@ -184,7 +188,57 @@ msc.bxp | olc.bxp | sec.bxp | aec.bxp | fibro.bxp | chondro.bxp | peri.bxp
 ```
 ![gitpic7](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/e7bfbea9-c816-4a81-935f-a49cf174d353)
 
+From the above, we can see that the bootstrapping has allowed us to derive p-values for our mean comparisons, which all turned out to be significant. Now we will move forward into more analyses on the populations that are more abundant in the myeloma condition.
+
 # Subcluster Analysis
+First, we isolate out our populations of interest. Those we will define as **MSC-lineage** cells, comprised of both our MSC and OLC populations, and **bone marrow endothelial cells (BMEC)**. The reason we include OLC in our MSC-lineage cells is because it is understood that mesenchymal stem cells have the capacity to differentiate into adipocytes (fat cells) and osteo-lineage cells (bone cells), so it makes sense to include all the cells within that known differentiation trajectory.
+
+So, we will subset out our MSC-lineage and BMEC subsets and rerun standard workflows on them. This will allow us to see these populations in higher resolution and shake out subpopulations that may have been concealed in our original clustering analysis which included all stromal cells.
+
+```{r}
+msclin <- subset(stromals, subset = celltypes %in% c("MSC", "OLC"))
+bmec <- subset(stromals, subset = celltypes %in% c("AEC", "SEC"))
+
+# note - number of PCs and clustering resolution were determined after some trial and error
+mscolcs <- ScaleData(msclin)
+mscolcs <- FindVariableFeatures(msclin, nfeatures = 2000)
+mscolcs <- RunPCA(msclin, npcs = 10)
+mscolcs <- FindNeighbors(msclin, dims = 1:10)
+mscolcs <- FindClusters(msclin, resolution = 0.2)
+mscolcs <- RunUMAP(msclin, dims = 1:10)
+
+bmecs <- ScaleData(bmec)
+bmecs <- FindVariableFeatures(bmec, nfeatures = 2000)
+bmecs <- RunPCA(bmec, npcs = 7)
+bmecs <- FindNeighbors(bmec, dims = 1:7)
+bmecs <- FindClusters(bmec, resolution = 0.15)
+bmecs <- RunUMAP(bmec, dims = 1:7)
+```
+<img width="730" alt="gitpic9" src="https://github.com/dgagler/5TGM1-Stromal/assets/31450828/1ea030ec-5d54-4121-b857-517da0e7848c">
+
+Here you can see the results of our subclustering. Splitting our UMAPs by condition allows us to make preliminary observations of population differences. For example, you can see that in the MSC-lineage cells, there appear to be more cluster 5 cells in the myeloma condition compared to the healthy condition.
+
+Once again, we run a bootstrapping to support these findings and it turns out that these differences are indeed significant. In particular, we see that cluster X y and Z are up in my BALLS and POOP is STINKIY!!!
+
+Next, we set out to characterize these populations. We want to know what sets these clusters apart, so we will perform a differential gene expression analysis between clusters and visualize the results using a heatmap. 
+
+**SHOW HEATMAP** 
+
+As mentioned earlier, MSC-lineage cells are known to differentiation into adipocytes and osteo-lineage cells. As such, we will use this framework to characterize our MSC-lineage cells. Marker genes for adipocytes include Adipoq, Lpl, and Mgp. Wif1 has been associated with undifferentiated or multi-potent MSC. Spp1 is a marker gene for early-osteocytes and Bglap is a marker for mature osteocytes, which are bone forming cells. We visualize these marker genes with feature plots and violin plots.
+
+**SHOW VIOLIN AND FEATURE PLOTS**
+
+You can see that cluster 0 is enriched in adipo-genes, cluster 1 expresses adipo genes and Wif1, cluster 2 expresses the early osteocyte gene Spp1, and cluster 3 expresses the mature osteocyte gene Bglap. Cluster 4 expresses similar adipo marker genes to cluster 0 but also expresses a unique set of transcription factors. Interestingly, cluster 5 expresses both adipo and osteo markers and when referring back to our bootstrapping results, we can see that cluster 5 is almost exclusively found in the MM condition and cluster 4 is generally depleted in MM. Taken together, our final subclustering annotation for MSC-lineage cells is as follows:
+* cluster 0 = Adipo-MSC
+* cluster 1 = Multipotent-MSC
+* cluster 2 = Early OLC
+* cluster 3 = Mature OLC
+* cluster 4 = Adipo-MSC 2
+* cluster 5 = MM-OLC
+
+These subclustering results were compiled together with knowledge about MM cell biology to generate a BioRender image which shows an overview of the MSC-lineage populations in our study. Each cluster is shown expressing secreted molecules, adhesion molecules, and receptor molecules.
+
+**conceptual overview image**
 
 # Trajectory Analysis
 
