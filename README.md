@@ -112,7 +112,11 @@ To annotate the stromal populations, we used a set of marker genes derived from 
 # Bootstrapping Relative Abundance
 We are interested in understanding changes in the bone marrow stromal cell populations in response to MM. One way in which these populations differ is in quantity. As an aside, assessing abundances is epistemologically tricky due to the compositional nature of NGS data, but this is not the place to discuss that. See this discussion by Thomas Quinn for more information on the subject - https://academic.oup.com/bioinformatics/article/34/16/2870/4956011
 
-For the time being, however, we will be satisfied with using relative abundances. But we will want to support any findings we may have statistically. This is made more complicated by the fact that our hashtagging data failed. If the hashtagging data had succeeded, we would have 4 replicates in each of our experimental conditions. Since it didn't, we don't. As a workaround, we will employ a common statistical approach: **the bootstrap**.
+For the time being, however, we will be satisfied with using relative abundances. From the below barplots, you can see that the myeloma condition has relatively more MSC, SEC, and chondrocytes. The chondrocytes are a very small population (0.4-1.2%), however, so we are more interested in the MSC and SEC cells.
+
+<img width="572" alt="gitpic8" src="https://github.com/dgagler/5TGM1-Stromal/assets/31450828/89074ede-8ec4-4669-8fab-37255376f042">
+
+But we will want to support any findings we may have statistically. This is made more complicated by the fact that our hashtagging data failed. If the hashtagging data had succeeded, we would have 4 replicates in each of our experimental conditions. Since it didn't, we don't. As a workaround, we will employ a common statistical approach: **the bootstrap**.
 
 Bootstrapping is a resampling method that allows for the calculation of standard errors, confidence intervals, p-values, and hypothesis testing. 
 
@@ -184,12 +188,127 @@ msc.bxp | olc.bxp | sec.bxp | aec.bxp | fibro.bxp | chondro.bxp | peri.bxp
 ```
 ![gitpic7](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/e7bfbea9-c816-4a81-935f-a49cf174d353)
 
+From the above, we can see that the bootstrapping has allowed us to derive p-values for our mean comparisons, which all turned out to be significant. Now we will move forward into more analyses on the populations that are more abundant in the myeloma condition.
+
 # Subcluster Analysis
+First, we isolate out our populations of interest. Those we will define as **MSC-lineage** cells, comprised of both our MSC and OLC populations, and **bone marrow endothelial cells (BMEC)**. The reason we include OLC in our MSC-lineage cells is because it is understood that mesenchymal stem cells have the capacity to differentiate into adipocytes (fat cells) and osteo-lineage cells (bone cells), so it makes sense to include all the cells within that known differentiation trajectory.
+
+So, we will subset out our MSC-lineage and BMEC subsets and rerun standard workflows on them. This will allow us to see these populations in higher resolution and shake out subpopulations that may have been concealed in our original clustering analysis which included all stromal cells.
+
+```{r}
+msclin <- subset(stromals, subset = celltypes %in% c("MSC", "OLC"))
+bmec <- subset(stromals, subset = celltypes %in% c("AEC", "SEC"))
+
+# note - number of PCs and clustering resolution were determined after some trial and error
+mscolcs <- ScaleData(msclin)
+mscolcs <- FindVariableFeatures(msclin, nfeatures = 2000)
+mscolcs <- RunPCA(msclin, npcs = 10)
+mscolcs <- FindNeighbors(msclin, dims = 1:10)
+mscolcs <- FindClusters(msclin, resolution = 0.2)
+mscolcs <- RunUMAP(msclin, dims = 1:10)
+
+bmecs <- ScaleData(bmec)
+bmecs <- FindVariableFeatures(bmec, nfeatures = 2000)
+bmecs <- RunPCA(bmec, npcs = 7)
+bmecs <- FindNeighbors(bmec, dims = 1:7)
+bmecs <- FindClusters(bmec, resolution = 0.15)
+bmecs <- RunUMAP(bmec, dims = 1:7)
+```
+<img width="730" alt="gitpic9" src="https://github.com/dgagler/5TGM1-Stromal/assets/31450828/1ea030ec-5d54-4121-b857-517da0e7848c">
+
+Here you can see the results of our subclustering. Splitting our UMAPs by condition allows us to make preliminary observations of population differences. For example, you can see that in the MSC-lineage cells, there appear to be more cluster 5 cells in the myeloma condition compared to the healthy condition.
+
+Once again, we run a bootstrapping, but this time on the subclusters for the MSC-lineage and BMEC. This supports our first observations and shows these differences are indeed significant. 
+
+![gitpic10](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/db0e430e-12ab-4690-8d2f-b70d8e34ddd1)
+
+Next, we set out to characterize these populations. We want to know what sets these clusters apart, so we will perform a differential gene expression analysis between clusters and visualize the results using a heatmap with the ComplexHeatmap package. The below code shows the process only for the MSC-lineage cells.
+
+```{r}
+library(ComplexHeatmap)
+
+# set idents to clusters 
+Idents(msclin) <- "seurat_clusters"
+# differential expression test (wilcoxon rank-sum by default) between clusters
+all.markers <- FindAllMarkers(msclin, assay = "RNA")
+all.markers <- all.markers[order(-all.markers$avg_log2FC),] # order by average log-fold change
+
+# we don't want to show all differentially expressed genes in our heatmap so we will extract out the top 15 per cluster
+output_gene_order <- c()
+
+# iterate through clusters and get top 15 genes sorted by adjusted p-value and average log-fold change
+for(i in c("0", "1", "2", "3", "4", "5")) {
+  print(i)
+
+  cluster_genes <- all.markers %>% filter(cluster == i) %>% dplyr::arrange(p_val_adj) %>%
+                      dplyr::filter(avg_log2FC > 0) %>%
+                      dplyr::select(gene) %>%
+                      head(n = 15) %>%
+                      purrr::as_vector()
+
+  output_gene_order <- c(output_gene_order, cluster_genes)
+}
+
+output_gene_order <- unique(output_gene_order)
+
+# subset our matrix so only include our genes of interest
+matrix <- msclin@assays$RNA@scale.data
+matrix.roworder.subset <- matrix[rownames(matrix) %in% output_gene_order,]
+output_gene_order_sub <- output_gene_order[output_gene_order %in% rownames(matrix.roworder.subset)]
+
+# the ComplexHeatmap function requires you to set your heatmap annotation data beforehand
+# we label by experimental condition and seurat cluster and manually set some default R colors
+annotation <- HeatmapAnnotation("Disease Status" = msclin@meta.data$condition,
+                                "Seurat Cluster" = msclin@meta.data$seurat_clusters,
+                                simple_anno_size = unit(3, "mm"),
+                                col = list("Disease Status" = c("Healthy" = "green", 
+                                                                "Myeloma" = "purple"),
+                                           "Seurat Cluster" = c("0" = "#F8766D",
+                                                         "1" = "#B79F00",
+                                                         "2" = "#00BA38",
+                                                         "3" = "#00BFC4",
+                                                         "4" = "#619CFF",
+                                                         "5" = "#F564E3"
+                                                         )))
+
+col_fun = colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+
+# finally, we run the heatmap function
+Heatmap(matrix.roworder.subset, cluster_rows = F, cluster_columns = TRUE,
+        row_order = output_gene_order_sub,
+        show_column_dend = F,
+        col = col_fun,
+        column_names_gp = gpar(fontsize = 0), row_names_gp = gpar(fontsize = 4.5),
+        clustering_distance_columns = "euclidean", clustering_method_columns = "average",
+        column_dend_height = unit(40,"mm"), row_dend_width = unit(40, "mm"),
+        top_annotation = annotation,
+        heatmap_legend_param = list(title = "Scaled Expression")
+        )
+```
+
+![gitpic11](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/04f447ea-484f-4d93-94e5-2f346c392721)
+
+As mentioned earlier, MSC-lineage cells are known to differentiation into adipocytes and osteo-lineage cells. As such, we will use this framework to characterize our MSC-lineage cells. Marker genes for adipocytes include Adipoq, Lpl, and Mgp. Wif1 has been associated with undifferentiated or multi-potent MSC. Spp1 is a marker gene for early-osteocytes and Bglap is a marker for mature osteocytes, which are bone forming cells. From this heatmap, we can see that cluster 0 is enriched in adipo-genes, cluster 1 expresses adipo genes and Wif1, cluster 2 expresses the early osteocyte gene Spp1, and cluster 3 expresses the mature osteocyte gene Bglap. Cluster 4 expresses similar adipo marker genes to cluster 0 but also expresses a unique set of transcription factors. Cluster 5 is hard to assess from the heatmap, so we generate some violin and feature plots to see if we can glean a new perspective.
+
+![gitpic12](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/d5478752-8fae-4356-a4e9-f3bcb07752d0)
+
+It turns out we can. Interestingly, cluster 5 expresses both adipo and osteo markers and when referring back to our bootstrapping results, we can see that cluster 5 is almost exclusively found in the MM condition and cluster 4 is generally depleted in MM. Taken together, our final subclustering annotation for MSC-lineage cells is as follows:
+* cluster 0 = Adipo-MSC
+* cluster 1 = Multipotent-MSC
+* cluster 2 = Early OLC
+* cluster 3 = Mature OLC
+* cluster 4 = Adipo-MSC 2
+* cluster 5 = MM-OLC
+
+These subclustering results were compiled together with knowledge about MM cell biology to generate a BioRender image which shows an overview of the MSC-lineage populations in our study. Each cluster is shown expressing secreted molecules, adhesion molecules, and receptor molecules.
+
+![gitpic13](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/a6a665a7-f59e-45dc-8237-20b985f65d86)
 
 # Trajectory Analysis
-
+adding to this soon...
 # Gene Set Enrichment Analysis
-
+adding to this soon...
 # EndoMT Analysis
+adding to this soon...
 
 This repository includes the code used for the analysis of this data, including, but not limited to, preprocessing, quality control filtering, integration, clustering, trajectory analysis, and gene set enrichment analysis (GSEA), in addition to the code used to generate both main and supplementary figures.
