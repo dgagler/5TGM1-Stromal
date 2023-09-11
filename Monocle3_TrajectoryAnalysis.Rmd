@@ -19,13 +19,13 @@ options(future.globals.maxSize=1000000000000000) # Set max global size so we don
 ```
 Load data
 ```{r}
-mscolcs <- readRDS("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/5TGM1_MSCOLC_Object.rds")
+msclin <- readRDS("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/5TGM1_MSCOLC_Object.rds")
 bmecs <- readRDS("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/5TGM1_BMEC_Object.rds")
 ```
 Set subtype to analyze
 ```{r}
-subtype <- mscolcs
-#subtype <- bmecs
+#subtype <- msclin
+subtype <- bmecs
 ```
 Convert Seurat to monocle object
 ```{r}
@@ -67,9 +67,9 @@ plot_cells(cds, color_cells_by = "cluster", label_groups_by_cluster = F,
 ```
 Compute pseudotime. Can do either by selecting an entire cluster or by manually selecting nodes. Did it by assigning cluster 1 for MSCOLCs and BMECs
 ```{r}
-cds <- order_cells(cds)
-cds <- order_cells(cds, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == "1"]))
+#cds <- order_cells(cds)
+cds <- order_cells(cds, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == "2"]))
 plot_cells(cds, color_cells_by = "pseudotime", label_groups_by_cluster = F,
-           label_branch_points = F, label_roots = F, label_leaves = F) + facet_grid(. ~ case.control) 
-ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/MSCOLCs_Monocle_TrajectoryUMAP_Pseudotime_ConditionSplit_Cluster1Root_8.31.23.Revamp.png", height = 5, width = 8)
+           label_branch_points = F, label_roots = F, label_leaves = F) + facet_grid(. ~ condition) 
+#ggsave("/Users/gagled01/morganLab/single-cell/5TG_Mouse_Rerun/BMEC_Monocle_TrajectoryUMAP_Pseudotime_ConditionSplit_Cluster2Root.png", height = 5, width = 8)
 ```

@@ -9,11 +9,14 @@ library(Seurat)
 ```
 Load in data
 ```{r}
-stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/5TGM1_StromalsOnly_Annotated_21PCs_ContamRemoved_FinalObject.rds")
+stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/Rerun_Mouse5TG_StromalsOnly_AnnotatedObject6_21PCs_NoLib_FIXEDLIBRARIES_6.rds")
+stromals@meta.data$condition <- stromals@meta.data$case.control
+stromals@meta.data$condition[stromals@meta.data$condition=="Healthy"] <- "PBS"
+stromals@meta.data$condition[stromals@meta.data$condition=="Myeloma"] <- "5TGM1"
 ```
 Subset MSC/OLCs cells
 ```{r}
-mscolcs <- subset(stromals, subset = celltypes %in% c("MSC", "OLC"))
+mscolcs <- subset(stromals, subset = celltypes_ECsubbed %in% c("MSCs", "OLCs"))
 ```
 Run standard workflow
 ```{r}
@@ -32,7 +35,7 @@ saveRDS(mscolcs, "/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/5T
 ```
 # Now do it for BMECs
 ```{r}
-bmecs <- subset(stromals, subset = celltypes %in% c("AEC", "SEC"))
+bmecs <- subset(stromals, subset = celltypes_ECsubbed %in% c("Arterial ECs", "Sinusoidal ECs"))
 ```
 Run standard workflow
 ```{r}
