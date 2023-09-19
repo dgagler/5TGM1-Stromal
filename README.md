@@ -305,7 +305,54 @@ These subclustering results were compiled together with knowledge about MM cell 
 ![gitpic13](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/a6a665a7-f59e-45dc-8237-20b985f65d86)
 
 # Trajectory Analysis
-adding to this soon...
+It's possible that a myeloma cell introduced to the bone marrow may influence local stromal cells to alter their cellular differentiation in a way that benefits the myeloma cell. To test this idea, we use a software program, Monocle3, to analyze **cellular development trajectories**. Monocle3 has infrastructure to perform much single-cell RNA analysis, but we will simply port our Seurat object to Monocle using the as.cell_data_set() object, which unfortunately introduces computational issues when performing some downstrean analyses including gene expression analysis as a function of pseudotime. Regardless, we will charge forth bravely.
+
+```
+library(monocle3)
+library(SeuratWrappers)
+
+# we perform this analysis for both MSC-lineage cells and BMECs, but will only look at MSC-lineage cells here
+cds <- as.cell_data_set(msclin)
+cds(estimate_size_factors(cds)
+
+# assign partitions
+recreate.partitions <- c(rep(1, length(cds@colData@rownames)))
+names(recreate.partitions) <- cds@colData@rownames
+recreate.partitions <- as.factor(recreate.partitions)
+cds@clusters@listData[["UMAP"]][["partitions"]] <- recreate.partitions
+
+# assign cluster information
+Idents(msclin) <- "seurat_clusters"
+list.cluster <- msclin@active.ident
+cds@clusters@listData[["UMAP"]][["clusters"]] <- list.cluster
+
+# assign UMAP coordinates
+cds@int_colData@listData[["reducedDims"]]@listData[["UMAP"]] <- msclin@reductions$umap@cell.embeddings
+
+# learn trajectory
+cds <- learn_graph(cds, use_partition = T)
+
+# plot trajectory
+plot_cells(cds, color_cells_by = "cluster", label_groups_by_cluster = F,
+           label_branch_points = T, label_roots = T, label_leaves = F, 
+           group_label_size = 5) + facet_grid(. ~ condition)
+```
+![gitpic14](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/5d01efee-31e8-414c-8808-2f7af2e491cc)
+
+Looking at our trajectories split by experimental condition, we can see that some trajectory branches that are enriched in and, in some cases, almost unique to the myeloma condition. This suggests that the MSC-lineage cells are differentiating in response to the myeloma cells in specific ways. In particular, we are unsurprised to see that our cluster 5 cells, almost unique to the MM condition, represent a distinct trajectory branch. Furthermore, there is a branch of cells labeled with the node "6", found within cluster 0 cells, which are greatly enhanced in the MM condition.
+
+Next, we are interested in computing **pseudotime**, which will give us a sense for the overall differentiation pattern of our cells. Pseudotime is a measure of how much progress an individual cell has made through a process like cell differentiation. See Monocle's documentation for more details: https://cole-trapnell-lab.github.io/monocle3/docs/trajectories/
+
+To do this, the user must define a so-called "root" of the trajectory, where a biological process is thought to occur. In the case of our MSC-lineage cells, we assume that our root cells are our multipotent MSC-lineage cluster 1 (*Wif1* expressing) cells, which do not express a clear signature for either adipocytes or osteocytes. 
+```
+cds <- order_cells(cds, reduction_method = "UMAP", root_cells = colnames(cds[, clusters(cds) == "1"]))
+plot_cells(cds, color_cells_by = "pseudotime", label_groups_by_cluster = F,
+           label_branch_points = F, label_roots = F, label_leaves = F) + facet_grid(. ~ condition) 
+```
+![gitpic15](https://github.com/dgagler/5TGM1-Stromal/assets/31450828/f83537cd-9ba4-46e5-9e61-d79362de6c14)
+
+Here you can see our UMAPs overlain with pseudotime values and split by experimental condition. This shows us that our mature osteoblasts (cluster 3) and our cluster 0 adipo-MSC cells are higher pseudotime values, implying that from the perspective of the *Wif1* expressing cluster 1 cells, mature osteoblasts and adipocytes represent the most differentiated cell types. Surprisingly, our cluster 5 cells have low pseudotime values. This may suggest that, despite appearances on the UMAP, these cells may be more related to, and potentially differentiate from, cluster 1 multipotent MSCs and not mature osteoblasts. This is also supported by the presence of adipo-genes in this cluster.
+
 # Gene Set Enrichment Analysis
 adding to this soon...
 # EndoMT Analysis
