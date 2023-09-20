@@ -354,7 +354,7 @@ plot_cells(cds, color_cells_by = "pseudotime", label_groups_by_cluster = F,
 Here you can see our UMAPs overlain with pseudotime values and split by experimental condition. This shows us that our mature osteoblasts (cluster 3) and our cluster 0 adipo-MSC cells are higher pseudotime values, implying that from the perspective of the *Wif1* expressing cluster 1 cells, mature osteoblasts and adipocytes represent the most differentiated cell types. Surprisingly, our cluster 5 cells have low pseudotime values. This may suggest that, despite appearances on the UMAP, these cells may be more related to, and potentially differentiate from, cluster 1 multipotent MSCs and not mature osteoblasts. This is also supported by the presence of adipo-genes in this cluster.
 
 # Gene Set Enrichment Analysis
-adding to this soon...
+So we have identified changes in the relative abundance of our MSC-lineage and BMECs and gone on to show that our cellular differentiation trajectories are also different in our myeloma cells compared to our controls. Next, we want to assess the gene expression of these cells with a broad brush using Gene Set Enrichment Analysis (GSEA). 
 # EndoMT Analysis
 adding to this soon...
 
