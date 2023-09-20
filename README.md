@@ -356,6 +356,6 @@ Here you can see our UMAPs overlain with pseudotime values and split by experime
 # Gene Set Enrichment Analysis
 So we have identified changes in the relative abundance of our MSC-lineage and BMECs and gone on to show that our cellular differentiation trajectories are also different in our myeloma cells compared to our controls. Next, we want to assess the gene expression of these cells with a broad brush using Gene Set Enrichment Analysis (GSEA). 
 # EndoMT Analysis
-adding to this soon...
+Incoming!
 
 This repository includes the code used for the analysis of this data, including, but not limited to, preprocessing, quality control filtering, integration, clustering, trajectory analysis, and gene set enrichment analysis (GSEA), in addition to the code used to generate both main and supplementary figures.
