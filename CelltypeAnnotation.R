@@ -5,12 +5,12 @@ library(Seurat)
 library(ggplot2)
 
 # Load all cells
-mouseBM <- readRDS("./5TGM1_AllCells_ManuallyAnnotated.rds")
+mouseBM <- readRDS("./5TGM1_AllCells_Integrated.rds")
 DefaultAssay(mouseBM) <- "RNA"
 
 DimPlot(mouseBM, label = T, group.by = "seurat_clusters")
-ggsave("/Users/gagled01/morganLab/5TGM1_Stromal/figures/AllCells_StromalImmune_Annotated_UMAP.png", height = 6, width = 8)
 
+# Recluster
 DefaultAssay(mouseBM) <- "integrated"
 mouseBM <- FindNeighbors(mouseBM, dims = 1:30)
 mouseBM <- FindClusters(mouseBM, resolution = 0.4)
@@ -87,27 +87,10 @@ FeaturePlot(mouseBM, features = "Nkg7")
 FeaturePlot(mouseBM, features = "Ly6k")
 FeaturePlot(mouseBM, features = "Slamf7")
 
-### OTHER WAY TO DO IT
-
-# HSC/GMP
-FeaturePlot(mouseBM, features = c("Cd79a", 
-                                  "Elane", "Mpo", "S100a9", "Ngp",
-                                  "Ccl3", "Tyrobp",
-                                  "Ppbp",
-                                  "Hba-a1",
-                                  "Car1", "Cdk6", "Peak1", "Mki67",
-                                  "Cdh19", "Plp1",
-                                  "Chodl"), ncol = 4)
-ggsave("/Users/gagled01/morganLab/5TGM1_Stromal/figures/NonStromalMarkreGenes_SuppFigure4?.png", height = 16, width = 16)
-
-
-bcells / hsc.gmp / momacs / platelets / rbcs / cycling / oligodendro / motor.neurons
-ggsave("/Users/gagled01/morganLab/5TGM1_Stromal/figures/NonStromalMarkreGenes_SuppFigure4?.png", height = 24, width = 8)
-
-
+# Update annotations
 Idents(mouseBM) <- mouseBM@meta.data$seurat_clusters
 
-# Requires manual inspection. Adjust these accordingly based on clustering and expression of above  markers
+# NOTE that this requires manual inspection. Adjust these accordingly based on clustering and expression of above markers
 mouseBM <- RenameIdents(mouseBM, "0" = "B cells")
 mouseBM <- RenameIdents(mouseBM, "1" = "MoMacs")
 mouseBM <- RenameIdents(mouseBM, "2" = "B cells")
@@ -131,7 +114,6 @@ mouseBM <- RenameIdents(mouseBM, "19" = "Oligodendrocytes")
 
 mouseBM@meta.data$celltypes <- Idents(mouseBM)
 DimPlot(mouseBM, group.by = "celltypes", label = T)
-ggsave("./figures/AllCells_StromalImmune_Annotated_UMAP.png", height = 6, width = 8)
 
 # Subset stromals
 stromals <- subset(mouseBM, subset = celltypes %in% c("Chondrocytes", "OLC", "MSC", "AEC", "SEC", "Fibroblasts", "Pericytes"))

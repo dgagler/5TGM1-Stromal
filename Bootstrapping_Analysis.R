@@ -1,16 +1,18 @@
-rm(list = ls()) # clear environment
-options(warn=-1) # turn off warning messages globally
+# Code used for bootstrapping analysis of 5TGM1 stromal data
+# Process involves doing this for 1. all stromal cells, 2. BMEC subclusters, 3. MSC-lineage subclusters
+# Process is the same across
 
+# Load libraries
 library(Seurat)
 library(dplyr)
 library(reshape2)
 library(gridExtra)
 library(ggpubr)
 library(patchwork)
-
 options(future.globals.maxSize=1000000000000000) # Set max global size so we don't run out of memory
 
-stromals <- readRDS("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/Rerun_Mouse5TG_StromalsOnly_AnnotatedObject6_21PCs_NoLib_FIXEDLIBRARIES_6.rds")
+# Load data
+stromals <- readRDS("./objects/5TGM1_StromalsOnly_AnnotatedObject.rds")
 myeloma <- subset(stromals, subset = case.control %in% "Myeloma")
 healthy <- subset(stromals, subset = case.control %in% "Healthy")
 
@@ -19,11 +21,10 @@ myeloma.abundances <- myeloma@meta.data$celltypes_ECsubbed
 healthy.abundances <- healthy@meta.data$celltypes_ECsubbed
 
 # Relative abundances by condition
-#null.relabuns <- table(stromals@meta.data$celltypes_ECsubbed)/sum(table(stromals@meta.data$celltypes_ECsubbed))
 myeloma.relabuns <- table(myeloma@meta.data$celltypes_ECsubbed)/sum(table(myeloma@meta.data$celltypes_ECsubbed))
 healthy.relabuns <- table(healthy@meta.data$celltypes_ECsubbed)/sum(table(healthy@meta.data$celltypes_ECsubbed))
 
-# Isolate values for each observed cell type relative abundance for MM
+# Isolate values for each observed cell type relative abundance for 5TGM1
 mm.observed.sec <- myeloma.relabuns[1]
 mm.observed.fibro <- myeloma.relabuns[2]
 mm.observed.msc <- myeloma.relabuns[3]
@@ -32,7 +33,7 @@ mm.observed.peri <- myeloma.relabuns[5]
 mm.observed.aec <- myeloma.relabuns[6]
 mm.observed.chondro <- myeloma.relabuns[7]
 
-# Isolate values for each observed cell type relative abundance for Healthy
+# Isolate values for each observed cell type relative abundance for PBS
 healthy.observed.sec <- healthy.relabuns[1]
 healthy.observed.fibro <- healthy.relabuns[2]
 healthy.observed.msc <- healthy.relabuns[3]
@@ -44,7 +45,6 @@ healthy.observed.chondro <- healthy.relabuns[7]
 # Total cells by condition
 n_cells_myeloma <- ncol(myeloma)
 n_cells_healthy <- ncol(healthy)
-
 
 # Randomly subsample with replacement and spit out relative abundances
 myeloma.resamples <- lapply(1:100, function(i) table(sample(myeloma.abundances, replace = T, prob = ))/n_cells_myeloma)
@@ -68,6 +68,7 @@ healthy.resamples.peri <- sapply(healthy.resamples,"[[",5)
 healthy.resamples.aec <- sapply(healthy.resamples,"[[",6)
 healthy.resamples.chondro <- sapply(healthy.resamples,"[[",7)
 
+# Generate celltype specific plotting dfs
 sec.plotting.df <- melt(data.frame(Myeloma = mm.resamples.sec, Healthy = healthy.resamples.sec, Celltype = "SEC"))
 colnames(sec.plotting.df)[2] <- "Condition"
 fibro.plotting.df <- melt(data.frame(Myeloma = mm.resamples.fibro, Healthy = healthy.resamples.fibro, Celltype = "Fibroblasts"))
@@ -83,8 +84,10 @@ colnames(aec.plotting.df)[2] <- "Condition"
 chondro.plotting.df <- melt(data.frame(Myeloma = mm.resamples.chondro, Healthy = healthy.resamples.chondro, Celltype = "Chondrocytes"))
 colnames(chondro.plotting.df)[2] <- "Condition"
 
+# Merge them together
 full.plotting.df <- do.call("rbind", list(sec.plotting.df, fibro.plotting.df, msc.plotting.df, olc.plotting.df, peri.plotting.df, aec.plotting.df, chondro.plotting.df))
 
+# Get p-values
 library(rstatix)
 sec.stat.test <- sec.plotting.df %>%
   t_test(value ~ Condition) %>%
@@ -116,6 +119,7 @@ fibro.other.ttest <- t.test(fibro.plotting.df$value ~ as.character(fibro.plottin
 chondro.other.ttest <- t.test(chondro.plotting.df$value ~ as.character(chondro.plotting.df$Condition), alternative = c("two.sided"))
 peri.other.ttest <- t.test(peri.plotting.df$value ~ as.character(peri.plotting.df$Condition), alternative = c("two.sided"))
 
+# Get confidence intervals
 msc.lower.conf <- msc.other.ttest$conf.int[1]
 msc.upper.conf <- msc.other.ttest$conf.int[2]
 
@@ -137,7 +141,7 @@ chondro.upper.conf <- chondro.other.ttest$conf.int[2]
 peri.lower.conf <- peri.other.ttest$conf.int[1]
 peri.upper.conf <- peri.other.ttest$conf.int[2]
 
-
+# Generate box plots
 sec.bxp <- ggboxplot(sec.plotting.df, x = "Condition", y = "value", fill = "Condition", notch = TRUE) +
   ylab("") + xlab("") + ggtitle("SEC") +
   theme_bw(base_size = 16) + 
@@ -216,9 +220,9 @@ chondro.bxp <- chondro.bxp +
   scale_y_continuous(expand = expansion(mult = c(0.05, 0.1)))
 
 msc.bxp | olc.bxp | sec.bxp | aec.bxp | fibro.bxp | chondro.bxp | peri.bxp
-ggsave("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/figures/100x_Bootstrap_CelltypeBoxplots.png", height = 5, width = 20)
 
-#bmecs <- readRDS("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/5TGM1_BMEC_Object.rds")
+# Now do it for BMECs only (Figure 6)
+bmecs <- readRDS("./objects/5TGM1_BMEC_Object.rds")
 bmecs.myeloma <- subset(bmecs, subset = condition %in% "5TGM1")
 bmecs.healthy <- subset(bmecs, subset = condition %in% "PBS")
 
@@ -390,9 +394,10 @@ bmec.c5.bxp <- bmec.c5.bxp +
   scale_y_continuous(expand = expansion(mult = c(0.05, 0.1)))
 
 (bmec.c0.bxp | bmec.c1.bxp | bmec.c2.bxp) / (bmec.c3.bxp | bmec.c4.bxp | bmec.c5.bxp)
-ggsave("/Users/gagled01/morganLab/5TGM1_Stromal/figures/100x_Bootstrap_BMEC_Cluster_Boxplots.png", height = 7, width = 8)
 
-#msclin <- readRDS("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/5TGM1_MSCOLC_Object.rds")
+# Now do it for MSC-lineage only (Figure 5)
+
+msclin <- readRDS(".objects/5TGM1_MSCOLC_Object.rds")
 msclins.myeloma <- subset(msclin, subset = condition %in% "5TGM1")
 msclins.healthy <- subset(msclin, subset = condition %in% "PBS")
 
@@ -560,4 +565,3 @@ msclin.c5.bxp <- msclin.c5.bxp +
   scale_y_continuous(expand = expansion(mult = c(0.05, 0.1)))
 
 (msclin.c0.bxp | msclin.c1.bxp | msclin.c2.bxp) / (msclin.c3.bxp | msclin.c4.bxp | msclin.c5.bxp)
-ggsave("/Users/gagled01/morganLab/5TGM1_Stromal/figures/100x_Bootstrap_MSClin_Cluster_Boxplots.png", height = 7, width = 8)
