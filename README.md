@@ -1,6 +1,6 @@
 # 5TGM1-Stromal Analysis
 
-This repository includes code used for the analysis of single-cell RNA data as part of the Ghamlouch et al., 2025 study in Experimental Hematology & Oncology: *A proinflammatory response and polarized differentiation of stromal elements characterizes the murine myeloma bone marrow niche*.
+> This repository contains code used for the analysis of single-cell RNA data as part of [Ghamlouch et al., 2025](https://ehoonline.biomedcentral.com/articles/10.1186/s40164-025-00606-x): *A proinflammatory response and polarized differentiation of stromal elements characterizes the murine myeloma bone marrow niche*.
 
 *Analytical overview is as follows:*
 
