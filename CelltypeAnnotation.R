@@ -1,3 +1,5 @@
+#!/usr/bin/env Rscript
+
 # Code for manually annotated stromal populations in mouse bone marrow microenvironment. Annotation schema based on Barayawno et al., 2019
 
 # Load libraries
@@ -46,14 +48,6 @@ FeaturePlot(mouseBM, features = "Emcn")
 FeaturePlot(mouseBM, features = "S100a4")
 FeaturePlot(mouseBM, features = "Fn1")
 FeaturePlot(mouseBM, features = "Dcn")
-
-FeaturePlot(mouseBM, features = c("Lepr", "Cxcl12",
-                                  "Bglap", "Spp1",
-                                  "Cdh5", "Emcn",
-                                  "S100a4", "Fn1",
-                                  "Sox9", "Acan", 
-                                  "Acta2", "Myh11"), ncol = 4)
-ggsave("/Users/gagled01/morganLab/5TGM1_Stromal/figures/StromalMarkreGenes_SuppFigure5.png", height = 12, width = 16)
 
 # B cells
 bcells <- FeaturePlot(mouseBM, features = "Cd79a")

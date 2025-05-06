@@ -1,11 +1,9 @@
+#!/usr/bin/env Rscript
+
 # Load libraries
 library(Seurat)
 library(ggplot2)
 library(dplyr)
-library(ggridges)
-library(ggforce)
-library(cowplot)
-library(Matrix)
 
 # Load data
 lib1.data <- Read10X('./082322-1/filtered_feature_bc_matrix')
@@ -16,8 +14,7 @@ lib5.data <- Read10X('./090122-1/filtered_feature_bc_matrix')
 lib6.data <- Read10X('./090122-2/filtered_feature_bc_matrix')
 
 # Rename hashtags
-lib4.data$`Antibody Capture`@Dimnames[[1]][1:8] <- c("hashtag1", "hashtag2", "hashtag3", "hashtag4",
-                                                     "hashtag5", "hashtag6", "hashtag7", "hashtag8")
+lib4.data$`Antibody Capture`@Dimnames[[1]][1:8] <- c("hashtag1", "hashtag2", "hashtag3", "hashtag4", "hashtag5", "hashtag6", "hashtag7", "hashtag8")
 
 # Create Seurat objects
 lib1 <- CreateSeuratObject(counts = lib1.data$`Gene Expression`, min.cells=3, min.features=200)
@@ -187,4 +184,4 @@ print(paste0("fraction lost = ", 1 - postfilter_total/prefilter_total))
 lib.list <- c(lib1, lib2, lib3, lib5, lib6)
 
 # Save out object 
-saveRDS(lib.list, "/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/5TGM1_Code/QC_Filtered_Libs.rds")
+saveRDS(lib.list, "./QC_Filtered_Libs.rds")

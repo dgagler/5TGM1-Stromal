@@ -1,3 +1,5 @@
+#!/usr/bin/env Rscript
+
 # Code used for bootstrapping analysis of 5TGM1 stromal data
 # Process involves doing this for 1. all stromal cells, 2. BMEC subclusters, 3. MSC-lineage subclusters
 # Process is the same across
@@ -9,6 +11,7 @@ library(reshape2)
 library(gridExtra)
 library(ggpubr)
 library(patchwork)
+library(rstatix)
 options(future.globals.maxSize=1000000000000000) # Set max global size so we don't run out of memory
 
 # Load data
@@ -88,7 +91,6 @@ colnames(chondro.plotting.df)[2] <- "Condition"
 full.plotting.df <- do.call("rbind", list(sec.plotting.df, fibro.plotting.df, msc.plotting.df, olc.plotting.df, peri.plotting.df, aec.plotting.df, chondro.plotting.df))
 
 # Get p-values
-library(rstatix)
 sec.stat.test <- sec.plotting.df %>%
   t_test(value ~ Condition) %>%
   add_significance()

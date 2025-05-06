@@ -1,3 +1,5 @@
+#!/usr/bin/env Rscript
+
 # Script which performs integration on the 5 mouse GEX libraries and then runs a standard Seurat workflow on them
 
 # Load libraries

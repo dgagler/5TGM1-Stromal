@@ -1,3 +1,5 @@
+#!/usr/bin/env Rscript
+
 # Code for Endothelial-to-Mesenchymal (EndoMT) analysis of mouse 5TGM1 stromal cells. Methodology derived from Kenswil et al., 2021 (10.1016/j.stem.2021.01.006)
 
 # Load libraries
@@ -31,14 +33,9 @@ cdh5 <- FindClusters(cdh5, resolution = 0.2)
 cdh5 <- RunUMAP(cdh5, dims = 1:10)
 DimPlot(cdh5)
 
+# Plot it out
 VlnPlot(cdh5, features = c("Cdh5", "Pecam1", "Eng", "Emcn", "Prrx1", "Col1a1", "Snai2", "Twist1", "Twist2", "Zeb2", "Yap1", "Cxcl12"), ncol = 4)
-ggsave("./figures/Cdh5_Pos_Cells_EndoMT_Genes_ViolinPlots.png", height = 12, width = 18)
 DimPlot(cdh5)
-ggsave("./figures/Cdh5_Pos_Cells_UMAP.png", height = 4, width = 5)
-DimPlot(cdh5, group.by = "celltypes_ECsubbed")
-ggsave("./figures/Cdh5_Pos_Cells__CellTypes_UMAP.png", height = 4, width = 5)
-DimPlot(cdh5, split.by = "case.control")
-ggsave("./figures/Cdh5_Pos_Cells_ConditionSplit_UMAP.png", height = 4, width = 8)
 
 # Based on violin plots above
 endoMTcells <- subset(cdh5, subset = seurat_clusters %in% c("4", "6"))
