@@ -1,0 +1,57 @@
+---
+title: "GSEA_RankedList_Generation"
+output: html_document
+date: "2023-02-02"
+---
+################################################################################
+Created by Dylan Gagler, MSc - dylan.gagler@nyulangone.org or dylangagler@gmail.com
+
+Code used for generating ranked lists for GSEA preranked analysis.
+
+Ranking is done by first performing differential gene expression analysis using wilcoxon rank-sum test via Seurat's FindMarkers() and then multiplying the average logFC by -log10 of the adjusted p values. 
+
+Sometimes this results in infinitely small p-values, in which case no rank-values can be computed. As such, a quick fix can be implemented by manually enforcing ranking values in the order that the genes appear in the output df.
+
+################################################################################
+
+Load libraries
+```{r}
+library(Seurat)
+library(dplyr)
+```
+Load data. This might be entire dataset or just a subset of cells
+```{r}
+subtype <- readRDS("/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/objects/5TGM1_MSCOLC_Object.rds")
+```
+Case vs. Control differential gene expression
+```{r}
+# If ident.1 = disease and ident.2 = control, then POSITIVE logFC means that the gene is upregulated in disease relative to control and NEGATIVE means the gene is downregulated in disease relative to control
+Idents(subtype) <- "case.control"
+markers <- FindMarkers(subtype, ident.1 = "myeloma", ident.2 = "control", min.pct = 0.25, logfc.threshold = 0.25)
+```
+# Generate ranked list
+```{r}
+# Generate rank score by mulitplying avg log FC by negative log10 of p value.
+rank.score <- sign(markers$avg_log2FC) * -log10(markers$p_val_adj)
+
+# Generate gene list
+genes <- rownames(markers)
+
+# Put into df
+rank.df <- data.frame(genes, rank.score)
+rownames(rank.df) <- rank.df$genes
+
+# Optionally fixing infinity values caused by infinitely small zero p values. Just assuming each gene has +1 rank score.
+# for (i in 1:72) {
+#   rank.df$rank.score[i] <- 373 - i
+# }
+```
+Write out ranked list
+```{r}
+write.table(rank.df, "/Users/gagled01/morganLab/single-cell/5TGM1_Stromal/GSEA/rankedLists/MSCOLC_CaseControl_RankList_forGSEA.rnk",
+            sep = "\t",
+            quote = F,
+            row.names = F,
+            col.names = F)
+```
+

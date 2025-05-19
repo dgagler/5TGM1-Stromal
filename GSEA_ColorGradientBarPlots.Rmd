@@ -1,0 +1,60 @@
+---
+title: "Untitled"
+output: html_document
+date: "2023-07-18"
+---
+
+Load GSEA ranked lists
+After using GSEA_RankedList_Generation.Rmd, the .rnk outfiles are loaded into GSEA and analyzed using Pre-ranked (https://www.gsea-msigdb.org/gsea/downloads.jsp) 
+
+1. load data
+2. Run GSEAPreranked
+  - Gene sets database = mh.all.v2024.1.Mm.symbols.gmt
+  - # permutations = 1000
+  - ranked list = ranked list generated above
+  - collapse/Remap = collapse
+  - Chip platform = Mouse_Gene_Symbol_Remapping_MSigDB
+
+Results of this were taken and put into tsv files, loaded below
+```{r}
+bmec.gsea <- read.table("/Users/gagled01/Downloads/BMEC_GSEA.tsv", sep = "\t", header = T)
+mscolc.gsea <- read.table("/Users/gagled01/Downloads/MSCOLC_GSEA.tsv", sep = "\t", header = T)
+stromal.gsea <- read.table("/Users/gagled01/morganLab/5TGM1_Stromal/GSEA/allStromal_GSEA.tsv", sep = "\t", header = T)
+```
+# Create dfs for plotting
+```{r}
+plotting.df <- data.frame(bmec.gsea$NAME, bmec.gsea$NES, bmec.gsea$FDR.q.val)
+plotting.df <- head(plotting.df, n = 20)
+colnames(plotting.df) <- c("Pathway", "NES", "FDR.q.val")
+plotting.df$Pathway <- gsub("HALLMARK_", "", plotting.df$Pathway)
+plotting.df$log10FDR.qval <- -log10(plotting.df$FDR.q.val)
+
+plotting.df2 <- data.frame(mscolc.gsea$NAME, mscolc.gsea$NES, mscolc.gsea$FDR.q.val)
+plotting.df2 <- head(plotting.df2, n = 20)
+colnames(plotting.df2) <- c("Pathway", "NES", "FDR.q.val")
+plotting.df2$FDR.q.val[1:2] <- 0.0001 # Manually giving some v low Q values because 0 does not work for plotting
+plotting.df2$Pathway <- gsub("HALLMARK_", "", plotting.df2$Pathway)
+plotting.df2$log10FDR.qval <- -log10(plotting.df2$FDR.q.val)
+
+plotting.df3 <- data.frame(stromal.gsea$NAME, stromal.gsea$NES, stromal.gsea$FDR.q.val)
+plotting.df3 <- head(plotting.df3, n = 20)
+colnames(plotting.df3) <- c("Pathway", "NES", "FDR.q.val")
+plotting.df3$Pathway <- gsub("HALLMARK_", "", plotting.df3$Pathway)
+plotting.df3$log10FDR.qval <- -log10(plotting.df3$FDR.q.val)
+
+```
+# Plot them
+```{r}
+ggplot(plotting.df, aes(x=NES, y=reorder(Pathway,log10FDR.qval), fill=log10FDR.qval)) + geom_bar(stat="identity")+scale_fill_gradient(low="red", high="blue", name = "-log10(FDR q-value)") +
+  ylab("") + theme_minimal() + theme(legend.position = "top") + guides(color=guide_legend("-log10(FDR q-value)"))
+ggsave("/Users/gagled01/morganLab/5TGM1_Stromal/figures/BMEC_GSEA_Barplot.png", height = 8, width = 8)
+
+ggplot(plotting.df2, aes(x=NES, y=reorder(Pathway,log10FDR.qval), fill=log10FDR.qval)) + geom_bar(stat="identity")+scale_fill_gradient(low="red", high="blue", name = "-log10(FDR q-value)") +
+  ylab("") + theme_minimal() + theme(legend.position = "top") + guides(color=guide_legend("-log10(FDR q-value)"))
+ggsave("/Users/gagled01/morganLab/5TGM1_Stromal/figures/BMEC_MSClin_GSEA_Barplot.png", height = 8, width = 8)
+
+ggplot(plotting.df3, aes(x=NES, y=reorder(Pathway,log10FDR.qval), fill=log10FDR.qval)) + geom_bar(stat="identity")+scale_fill_gradient(low="red", high="blue", name = "-log10(FDR q-value)") +
+  ylab("") + theme_minimal() + theme(legend.position = "top")
+ggsave("/Users/gagled01/morganLab/5TGM1_Stromal/figures/AllStromal_GSEA_Barplot.png", height = 6, width = 8)
+```
+
